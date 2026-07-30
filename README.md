@@ -14,13 +14,13 @@ A local development service manager for macOS, inspired by DBngin and Laravel He
 
 | Service | Status |
 |---------|--------|
-| Mailpit | ✅ Implemented |
-| Valkey | ✅ Implemented |
 | MySQL | ✅ Implemented |
-| MariaDB | 🔜 Planned |
-| PostgreSQL | 🔜 Planned |
-| Meilisearch | 🔜 Planned |
-| MinIO | 🔜 Planned |
+| MariaDB | ✅ Implemented (builds from source — no official macOS binaries) |
+| PostgreSQL | ✅ Implemented |
+| Valkey | ✅ Implemented |
+| Mailpit | ✅ Implemented |
+| Meilisearch | ✅ Implemented |
+| MinIO | ✅ Implemented |
 | Laravel Reverb | 🔜 Planned |
 
 ## Installation
@@ -79,8 +79,7 @@ stackd autostart enable
 | `stackd delete <service> [name]` | Delete an instance |
 | `stackd env [service] [name]` | Print `.env` lines |
 | `stackd env --write` | Write to current Laravel `.env` |
-| `stackd inject <path>` | Inject into a specific project |
-| `stackd stack <name> --mysql --valkey` | Create a named stack |
+| `stackd doctor` | Check install health and connectivity |
 | `stackd logs <service> [name]` | View logs |
 | `stackd open <service> [name]` | Open TablePlus or web UI |
 | `stackd autostart enable\|disable\|add\|remove\|list` | Manage login autostart |
@@ -105,7 +104,9 @@ stackd autostart enable
 
 - macOS (launchd support)
 - PHP 8.2+
-- Xcode Command Line Tools (for compiling Valkey from source)
+- Xcode Command Line Tools (for compiling Valkey / MariaDB from source)
+- `cmake` (required to build MariaDB from source)
+- `ext-pcntl` recommended for animated spinners (Laravel Prompts)
 
 ## License
 

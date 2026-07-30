@@ -102,21 +102,102 @@ class ProcessManager
         }
     }
 
-    public function run(array $command, ?string $cwd = null, int $timeout = 300): Process
+    public function run(array $command, ?string $cwd = null, int $timeout = 300, ?string $logFile = null): Process
     {
         $process = new Process($command, $cwd);
         $process->setTimeout($timeout);
-        $process->run();
+
+        if ($logFile !== null) {
+            $this->ensureLogDirectory($logFile);
+            $handle = fopen($logFile, 'w');
+
+            if ($handle === false) {
+                throw new RuntimeException("Unable to write log file {$logFile}");
+            }
+
+            $process->run(function ($type, $buffer) use ($handle): void {
+                fwrite($handle, $buffer);
+            });
+
+            fclose($handle);
+        } else {
+            $process->run();
+        }
 
         return $process;
     }
 
-    public function runOrFail(array $command, ?string $cwd = null, int $timeout = 300): void
+    public function runOrFail(array $command, ?string $cwd = null, int $timeout = 300, ?string $logFile = null): void
     {
-        $process = $this->run($command, $cwd, $timeout);
+        $process = $this->run($command, $cwd, $timeout, $logFile);
 
-        if (! $process->isSuccessful()) {
-            throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'Command failed.');
+        if ($process->isSuccessful()) {
+            return;
+        }
+
+        if ($logFile !== null && file_exists($logFile)) {
+            throw new RuntimeException($this->summarizeLogFailure($logFile, $command));
+        }
+
+        throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'Command failed.');
+    }
+
+    /**
+     * @param  array<int, string>  $command
+     */
+    private function summarizeLogFailure(string $logFile, array $command): string
+    {
+        $lines = file($logFile, FILE_IGNORE_NEW_LINES);
+
+        if ($lines === false || $lines === []) {
+            return 'Command failed. See '.$logFile;
+        }
+
+        $errors = [];
+
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+
+            if ($trimmed === '') {
+                continue;
+            }
+
+            if (
+                str_contains($trimmed, 'error:')
+                || str_contains($trimmed, 'Error:')
+                || str_contains($trimmed, 'CMake Error')
+                || str_contains($trimmed, 'fatal error:')
+                || str_starts_with($trimmed, 'make: ***')
+                || str_contains($trimmed, 'FAILED:')
+            ) {
+                // Skip noisy SDK nullability warnings that can contain the word in other forms.
+                if (str_contains($trimmed, 'nullability') || str_contains($trimmed, '_Nonnull') || str_contains($trimmed, '_Nullable')) {
+                    continue;
+                }
+
+                $errors[] = $trimmed;
+
+                if (count($errors) >= 8) {
+                    break;
+                }
+            }
+        }
+
+        $summary = $errors !== []
+            ? implode("\n", $errors)
+            : implode("\n", array_slice($lines, -20));
+
+        $label = implode(' ', array_slice($command, 0, 4));
+
+        return "Command failed ({$label}).\n{$summary}\nFull log: {$logFile}";
+    }
+
+    private function ensureLogDirectory(string $logFile): void
+    {
+        $dir = dirname($logFile);
+
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
         }
     }
 

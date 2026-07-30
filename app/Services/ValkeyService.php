@@ -2,11 +2,24 @@
 
 namespace App\Services;
 
+use App\Support\BinaryDownloader;
 use App\Support\Instance;
+use App\Support\ProcessManager;
+use App\Support\ServiceOpener;
+use App\Support\StackdPaths;
 use RuntimeException;
 
 class ValkeyService extends AbstractService
 {
+    public function __construct(
+        StackdPaths $paths,
+        ProcessManager $processes,
+        BinaryDownloader $binaries,
+        private readonly ServiceOpener $opener,
+    ) {
+        parent::__construct($paths, $processes, $binaries);
+    }
+
     public static function type(): string
     {
         return 'valkey';
@@ -64,6 +77,16 @@ class ValkeyService extends AbstractService
         ];
     }
 
+    public function openInDatabaseClient(Instance $instance): void
+    {
+        $this->opener->openDatabase(
+            driver: 'redis',
+            host: $this->bindAddress(),
+            port: $instance->port,
+            name: "stackd {$instance->id()}",
+        );
+    }
+
     public function statusDetails(Instance $instance): array
     {
         return array_merge(parent::statusDetails($instance), [
@@ -112,6 +135,7 @@ CONF;
             url: $config['url'],
             destination: $buildDir,
             archiveName: $archiveName,
+            label: 'Valkey source',
         );
 
         $sourceDir = is_dir($buildDir.'/'.$config['source_dir'])
@@ -122,6 +146,7 @@ CONF;
             sourceDirectory: $sourceDir,
             binaryName: 'valkey-server',
             outputPath: $destination.'/valkey-server',
+            label: 'Valkey',
         );
     }
 }

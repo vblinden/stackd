@@ -8,6 +8,7 @@ use App\Support\ProcessManager;
 use App\Support\ServiceOpener;
 use App\Support\StackdPaths;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 
 class MySqlService extends AbstractService
 {
@@ -70,6 +71,8 @@ class MySqlService extends AbstractService
             pidFile: $this->pidFile($instance),
             logFile: $this->outputLog($instance),
         );
+
+        $this->bootstrapIfNeeded($instance);
     }
 
     public function stop(Instance $instance): void
@@ -93,13 +96,20 @@ class MySqlService extends AbstractService
         ];
     }
 
+    public function credentials(Instance $instance): array
+    {
+        return [
+            'username' => (string) $instance->option('username', 'root'),
+            'password' => (string) $instance->option('password', ''),
+        ];
+    }
+
     public function openInDatabaseClient(Instance $instance): void
     {
         $this->opener->openDatabase(
             driver: 'mysql',
             host: $this->bindAddress(),
             port: $instance->port,
-            database: (string) $instance->option('database', 'laravel'),
             user: (string) $instance->option('username', 'root'),
             password: (string) $instance->option('password', '') ?: null,
             name: "stackd {$instance->id()}",
@@ -127,6 +137,85 @@ class MySqlService extends AbstractService
             '--datadir='.$dataDir,
             '--basedir='.$basedir,
         ]);
+    }
+
+    private function bootstrapIfNeeded(Instance $instance): void
+    {
+        $marker = $this->bootstrapMarkerPath($instance);
+
+        if (file_exists($marker)) {
+            return;
+        }
+
+        $this->waitUntilReady($instance);
+
+        $username = (string) $instance->option('username', 'root');
+        $password = (string) $instance->option('password', '');
+        $database = (string) $instance->option('database', 'laravel');
+        $passwordSql = $password === '' ? "''" : "'".addslashes($password)."'";
+
+        foreach ([
+            "CREATE USER IF NOT EXISTS '{$username}'@'127.0.0.1' IDENTIFIED BY {$passwordSql}",
+            "GRANT ALL PRIVILEGES ON *.* TO '{$username}'@'127.0.0.1' WITH GRANT OPTION",
+            "CREATE DATABASE IF NOT EXISTS `{$database}`",
+            'FLUSH PRIVILEGES',
+        ] as $statement) {
+            $this->runSql($instance, $statement);
+        }
+
+        file_put_contents($marker, (new \DateTimeImmutable)->format(\DateTimeInterface::ATOM));
+    }
+
+    private function waitUntilReady(Instance $instance, int $timeout = 30): void
+    {
+        $socket = $this->socketPath($instance);
+        $deadline = time() + $timeout;
+
+        while (time() < $deadline) {
+            if (file_exists($socket)) {
+                $process = new Process([
+                    $this->mysqlClientPath($instance),
+                    '-S', $socket,
+                    '-u', 'root',
+                    '-e', 'SELECT 1',
+                ]);
+                $process->run();
+
+                if ($process->isSuccessful()) {
+                    return;
+                }
+            }
+
+            usleep(200_000);
+        }
+
+        throw new RuntimeException('MySQL failed to become ready for bootstrapping.');
+    }
+
+    private function runSql(Instance $instance, string $sql): void
+    {
+        $this->processes->runOrFail([
+            $this->mysqlClientPath($instance),
+            '-S', $this->socketPath($instance),
+            '-u', 'root',
+            '-e', $sql,
+        ]);
+    }
+
+    private function mysqlClientPath(Instance $instance): string
+    {
+        $client = $this->basedir($instance).'/bin/mysql';
+
+        if (! is_executable($client)) {
+            throw new RuntimeException('MySQL client binary was not found.');
+        }
+
+        return $client;
+    }
+
+    private function bootstrapMarkerPath(Instance $instance): string
+    {
+        return $this->paths->instance($instance->service, $instance->name).'/.bootstrapped';
     }
 
     private function buildConfig(Instance $instance, string $dataDir, string $socket): string
@@ -184,7 +273,7 @@ CNF;
         $destination = $this->versionDirectory($instance);
         $archiveName = basename(parse_url($url, PHP_URL_PATH));
 
-        $this->binaries->installFromTarball($url, $destination, $archiveName);
+        $this->binaries->installFromTarball($url, $destination, $archiveName, 'MySQL');
 
         if (! is_executable($this->mysqldPath($instance))) {
             throw new RuntimeException('MySQL download completed but mysqld was not found.');

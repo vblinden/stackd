@@ -6,6 +6,10 @@ use App\Commands\Concerns\ResolvesServiceInput;
 use App\Support\InstanceManager;
 use LaravelZero\Framework\Commands\Command;
 
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\spin;
+
 class StopCommand extends Command
 {
     use ResolvesServiceInput;
@@ -20,12 +24,15 @@ class StopCommand extends Command
     {
         try {
             $service = $this->resolveServiceType($this->argument('service'));
-            $manager->stop($service, $this->argument('name'));
-            $this->components->info("Stopped {$service}".($this->argument('name') ? ' '.$this->argument('name') : ''));
+            $name = $this->argument('name');
+            $label = $service.($name ? " {$name}" : '');
+
+            spin(fn () => $manager->stop($service, $name), "Stopping {$label}...");
+            info("Stopped {$label}");
 
             return self::SUCCESS;
         } catch (\Throwable $e) {
-            $this->components->error($e->getMessage());
+            error($e->getMessage());
 
             return self::FAILURE;
         }

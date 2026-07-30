@@ -29,6 +29,13 @@ interface ServiceInterface
      */
     public function envVariables(Instance $instance): array;
 
+    /**
+     * Auth credentials to show after create / in status (empty if none).
+     *
+     * @return array<string, string>
+     */
+    public function credentials(Instance $instance): array;
+
     public function openUrl(Instance $instance): ?string;
 
     public function openInDatabaseClient(Instance $instance): void;

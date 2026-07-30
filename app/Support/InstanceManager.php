@@ -11,6 +11,7 @@ class InstanceManager
         private readonly InstanceRepository $repository,
         private readonly ServiceRegistry $registry,
         private readonly StackdPaths $paths,
+        private readonly InstallProgress $progress,
     ) {}
 
     public function create(string $serviceType, ?string $name = null, ?int $port = null, ?string $version = null, array $options = []): Instance
@@ -27,11 +28,32 @@ class InstanceManager
             $options['web_port'] = $port + 7000;
         }
 
-        if ($serviceType === 'mysql') {
+        if (in_array($serviceType, ['mysql', 'mariadb'], true)) {
             $options = array_merge([
                 'database' => 'laravel',
                 'username' => 'root',
                 'password' => '',
+            ], $options);
+        }
+
+        if ($serviceType === 'postgresql') {
+            $options = array_merge([
+                'database' => 'laravel',
+                'username' => 'laravel',
+                'password' => '',
+            ], $options);
+        }
+
+        if ($serviceType === 'meilisearch' && ! isset($options['master_key'])) {
+            $options['master_key'] = bin2hex(random_bytes(16));
+        }
+
+        if ($serviceType === 'minio') {
+            $options = array_merge([
+                'access_key' => 'stackd',
+                'secret_key' => 'secretkey',
+                'bucket' => 'laravel',
+                'console_port' => $port + 1,
             ], $options);
         }
 
@@ -46,8 +68,20 @@ class InstanceManager
         $this->paths->ensureHome();
         $service->create($instance);
         $this->repository->save($instance);
+        $this->progress->starting($instance->id(), function () use ($serviceType, $name): void {
+            $this->start($serviceType, $name);
+        });
 
         return $instance;
+    }
+
+    public function ensureRunning(Instance $instance): void
+    {
+        if ($this->isRunning($instance)) {
+            return;
+        }
+
+        $this->registry->get($instance->service)->start($instance);
     }
 
     public function start(string $serviceType, ?string $name = null): void

@@ -15,7 +15,7 @@ class AutostartCommand extends Command
                             {service? : Service type for add/remove}
                             {name? : Instance name for add/remove}';
 
-    protected $description = 'Manage login autostart for stackd services';
+    protected $description = 'Manage start at login';
 
     public function handle(LaunchAgentManager $autostart): int
     {

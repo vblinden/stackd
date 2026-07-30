@@ -21,19 +21,19 @@ class ServiceOpener
         string $driver,
         string $host,
         int $port,
-        string $database,
-        string $user,
+        ?string $user = null,
         ?string $password = null,
         ?string $name = null,
+        ?string $database = null,
     ): void {
         $connectionUrl = $this->buildConnectionUrl(
             driver: $driver,
             host: $host,
             port: $port,
-            database: $database,
             user: $user,
             password: $password,
             name: $name,
+            database: $database,
         );
 
         if ($this->openWithTablePlus($connectionUrl)) {
@@ -47,31 +47,39 @@ class ServiceOpener
         string $driver,
         string $host,
         int $port,
-        string $database,
-        string $user,
+        ?string $user = null,
         ?string $password = null,
         ?string $name = null,
+        ?string $database = null,
     ): string {
         $scheme = match ($driver) {
             'mysql', 'mariadb' => 'mysql',
             'postgresql' => 'postgresql',
+            'redis', 'valkey' => 'redis',
             default => throw new RuntimeException("Unsupported database driver: {$driver}"),
         };
 
-        $auth = rawurlencode($user);
+        if ($scheme === 'redis') {
+            $auth = '';
 
-        if ($password !== null && $password !== '') {
-            $auth .= ':'.rawurlencode($password);
+            if ($password !== null && $password !== '') {
+                $auth = ':'.rawurlencode($password).'@';
+            }
+
+            $url = sprintf('redis://%s%s:%d', $auth, $host, $port);
+        } else {
+            $auth = rawurlencode($user ?? 'root');
+
+            if ($password !== null && $password !== '') {
+                $auth .= ':'.rawurlencode($password);
+            }
+
+            $url = sprintf('%s://%s@%s:%d', $scheme, $auth, $host, $port);
+
+            if ($database !== null && $database !== '') {
+                $url .= '/'.rawurlencode($database);
+            }
         }
-
-        $url = sprintf(
-            '%s://%s@%s:%d/%s',
-            $scheme,
-            $auth,
-            $host,
-            $port,
-            rawurlencode($database),
-        );
 
         $params = array_filter([
             'env' => 'local',

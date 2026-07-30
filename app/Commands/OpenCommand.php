@@ -8,6 +8,9 @@ use App\Support\InstanceManager;
 use App\Support\ServiceOpener;
 use LaravelZero\Framework\Commands\Command;
 
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+
 class OpenCommand extends Command
 {
     use ResolvesServiceInput;
@@ -28,9 +31,14 @@ class OpenCommand extends Command
             $instance = $manager->resolveInstance($serviceType, $this->argument('name'));
             $service = $registry->get($serviceType);
 
-            if (in_array($serviceType, ['mysql', 'mariadb', 'postgresql'], true)) {
+            if (! $manager->isRunning($instance)) {
+                $manager->ensureRunning($instance);
+                info("Started {$instance->id()}");
+            }
+
+            if (in_array($serviceType, ['mysql', 'mariadb', 'postgresql', 'valkey'], true)) {
                 $service->openInDatabaseClient($instance);
-                $this->components->info('Opened database client.');
+                info('Opened database client.');
 
                 return self::SUCCESS;
             }
@@ -42,11 +50,11 @@ class OpenCommand extends Command
             }
 
             $opener->openUrl($url);
-            $this->components->info("Opened {$url}");
+            info("Opened {$url}");
 
             return self::SUCCESS;
         } catch (\Throwable $e) {
-            $this->components->error($e->getMessage());
+            error($e->getMessage());
 
             return self::FAILURE;
         }

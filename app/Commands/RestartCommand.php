@@ -6,6 +6,10 @@ use App\Commands\Concerns\ResolvesServiceInput;
 use App\Support\InstanceManager;
 use LaravelZero\Framework\Commands\Command;
 
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\spin;
+
 class RestartCommand extends Command
 {
     use ResolvesServiceInput;
@@ -20,12 +24,15 @@ class RestartCommand extends Command
     {
         try {
             $service = $this->resolveServiceType($this->argument('service'));
-            $manager->restart($service, $this->argument('name'));
-            $this->components->info("Restarted {$service}".($this->argument('name') ? ' '.$this->argument('name') : ''));
+            $name = $this->argument('name');
+            $label = $service.($name ? " {$name}" : '');
+
+            spin(fn () => $manager->restart($service, $name), "Restarting {$label}...");
+            info("Restarted {$label}");
 
             return self::SUCCESS;
         } catch (\Throwable $e) {
-            $this->components->error($e->getMessage());
+            error($e->getMessage());
 
             return self::FAILURE;
         }

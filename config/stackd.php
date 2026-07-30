@@ -42,6 +42,16 @@ return [
             ],
             'latest' => '8.4',
         ],
+        'mariadb' => [
+            'version' => '11.4.12',
+            'url' => 'https://archive.mariadb.org/mariadb-11.4.12/source/mariadb-11.4.12.tar.gz',
+            'source_dir' => 'mariadb-11.4.12',
+        ],
+        'postgresql' => [
+            'version' => '18.4.0',
+            'arm64' => 'https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-aarch64-apple-darwin.tar.gz',
+            'x86_64' => 'https://github.com/theseus-rs/postgresql-binaries/releases/download/18.4.0/postgresql-18.4.0-x86_64-apple-darwin.tar.gz',
+        ],
         'valkey' => [
             'version' => '9.1.1',
             'url' => 'https://github.com/valkey-io/valkey/archive/refs/tags/9.1.1.tar.gz',
@@ -49,6 +59,15 @@ return [
         ],
         'mailpit' => [
             'url' => 'https://github.com/axllent/mailpit/releases/latest/download/mailpit-darwin-{arch}.tar.gz',
+        ],
+        'meilisearch' => [
+            'version' => 'v1.51.0',
+            'arm64' => 'https://github.com/meilisearch/meilisearch/releases/download/v1.51.0/meilisearch-macos-apple-silicon',
+            'x86_64' => 'https://github.com/meilisearch/meilisearch/releases/download/v1.51.0/meilisearch-macos-amd64',
+        ],
+        'minio' => [
+            'arm64' => 'https://dl.min.io/server/minio/release/darwin-arm64/minio',
+            'x86_64' => 'https://dl.min.io/server/minio/release/darwin-amd64/minio',
         ],
     ],
 

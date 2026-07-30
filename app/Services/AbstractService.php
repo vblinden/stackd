@@ -42,6 +42,14 @@ abstract class AbstractService implements ServiceInterface
         return null;
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public function credentials(Instance $instance): array
+    {
+        return [];
+    }
+
     public function openInDatabaseClient(Instance $instance): void
     {
         throw new \RuntimeException(static::displayName().' does not support database client opening.');

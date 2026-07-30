@@ -4,8 +4,16 @@ namespace App\Commands;
 
 use App\Commands\Concerns\ResolvesServiceInput;
 use App\Services\ServiceRegistry;
+use App\Support\CredentialFormatter;
 use App\Support\InstanceManager;
+use App\Support\LaunchAgentManager;
 use LaravelZero\Framework\Commands\Command;
+
+use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\select;
+use function Termwind\render;
 
 class CreateCommand extends Command
 {
@@ -17,17 +25,26 @@ class CreateCommand extends Command
                             {--port= : Port to bind on 127.0.0.1}
                             {--service-version= : Service version}';
 
-    protected $description = 'Create a new global service instance';
+    protected $description = 'Create a service instance';
 
-    public function handle(InstanceManager $manager, ServiceRegistry $registry): int
-    {
+    public function handle(
+        InstanceManager $manager,
+        ServiceRegistry $registry,
+        LaunchAgentManager $autostart,
+    ): int {
         try {
             if ($this->argument('service') === null) {
-                return $this->listServices($registry);
+                if ($this->laravel->runningUnitTests() || ! stream_isatty(STDIN)) {
+                    return $this->listServices($registry);
+                }
+
+                $service = $this->promptForService($registry);
+            } else {
+                $service = $this->resolveServiceType($this->argument('service'));
             }
 
-            $service = $this->resolveServiceType($this->argument('service'));
             $port = $this->option('port') !== null ? (int) $this->option('port') : null;
+            $startAtLogin = $this->promptForStartAtLogin();
 
             $instance = $manager->create(
                 serviceType: $service,
@@ -36,38 +53,121 @@ class CreateCommand extends Command
                 version: $this->option('service-version'),
             );
 
-            $this->components->info("Created {$instance->id()} on {$instance->port}");
+            info("Created and started {$instance->id()} on {$instance->port}");
+            $this->renderCredentials($registry->get($service)->credentials($instance));
+
+            if ($startAtLogin) {
+                $autostart->add($instance->service, $instance->name);
+                info("Added {$instance->id()} to start at login.");
+            }
 
             return self::SUCCESS;
         } catch (\Throwable $e) {
-            $this->components->error($e->getMessage());
+            error($e->getMessage());
 
             return self::FAILURE;
         }
     }
 
+    private function promptForStartAtLogin(): bool
+    {
+        if ($this->laravel->runningUnitTests() || ! stream_isatty(STDIN)) {
+            return false;
+        }
+
+        return confirm(
+            label: 'Start this service at login?',
+            default: false,
+        );
+    }
+
+    /**
+     * @param  array<string, string>  $credentials
+     */
+    private function renderCredentials(array $credentials): void
+    {
+        $formatted = CredentialFormatter::display($credentials);
+
+        if ($formatted === []) {
+            return;
+        }
+
+        foreach ($formatted as $label => $value) {
+            $safeLabel = htmlspecialchars(ucfirst($label), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $safeValue = htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+            render(<<<HTML
+                <div class="ml-1">
+                    <span class="text-gray-500">{$safeLabel}:</span>
+                    <span class="ml-1 text-white">{$safeValue}</span>
+                </div>
+            HTML);
+        }
+
+        render('<div class="mb-1"></div>');
+    }
+
+    private function promptForService(ServiceRegistry $registry): string
+    {
+        $options = [];
+        $comingSoon = [];
+
+        foreach (config('stackd.services') as $type) {
+            if ($registry->has($type)) {
+                $service = $registry->get($type);
+                $port = config("stackd.default_ports.{$type}");
+                $options[$type] = "{$service->displayName()}  ·  :{$port}";
+            } else {
+                $comingSoon[] = $type;
+            }
+        }
+
+        render(<<<'HTML'
+            <div class="mt-1 ml-1">
+                <span class="font-bold text-white">Create a service</span>
+            </div>
+        HTML);
+
+        return select(
+            label: 'Which service?',
+            options: $options,
+            hint: $comingSoon !== [] ? 'Coming soon: '.implode(', ', $comingSoon) : '',
+        );
+    }
+
     private function listServices(ServiceRegistry $registry): int
     {
-        $rows = [];
+        render(<<<'HTML'
+            <div class="mt-1 ml-1">
+                <span class="font-bold text-white">Available services</span>
+            </div>
+        HTML);
 
         foreach (config('stackd.services') as $type) {
             $available = $registry->has($type);
             $service = $available ? $registry->get($type) : null;
+            $name = $service?->displayName() ?? ucfirst($type);
+            $port = (string) config("stackd.default_ports.{$type}", '-');
+            $status = $available
+                ? '<span class="text-green-500">available</span>'
+                : '<span class="text-gray-500">coming soon</span>';
 
-            $rows[] = [
-                $type,
-                $service?->displayName() ?? ucfirst($type),
-                (string) config("stackd.default_ports.{$type}", '-'),
-                $available ? '<fg=green>available</>' : '<fg=gray>coming soon</>',
-            ];
+            render(<<<HTML
+                <div class="ml-1">
+                    <span class="font-bold text-white">{$type}</span>
+                    <span class="ml-2 text-gray-500">{$name}</span>
+                    <span class="ml-2 text-cyan-400">:{$port}</span>
+                    <span class="ml-2">{$status}</span>
+                </div>
+            HTML);
         }
 
-        $this->newLine();
-        $this->line('  <fg=white;options=bold>Available services</>');
-        $this->newLine();
-        $this->table(['Service', 'Name', 'Default port', 'Status'], $rows);
-        $this->line('  <fg=gray>Usage:</> stackd create <fg=cyan>mysql</> <fg=gray>--name=laravel --port=3306</>');
-        $this->newLine();
+        render(<<<'HTML'
+            <div class="mt-1 ml-1 mb-1">
+                <span class="text-gray-500">Usage: </span>
+                <span class="text-cyan-400">stackd create mysql --name=laravel</span>
+            </div>
+        HTML);
 
         return self::SUCCESS;
     }

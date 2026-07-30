@@ -3,6 +3,7 @@
 use App\Support\EnvWriter;
 use App\Support\Instance;
 use App\Support\InstanceRepository;
+use App\Support\ServiceOpener;
 use App\Support\StackdPaths;
 
 it('creates instance metadata', function () {
@@ -58,17 +59,48 @@ it('resolves dotted mysql version keys from config', function () {
         ->and(config('stackd.downloads.mysql.8.4'))->toBeNull();
 });
 
+it('runs the doctor command', function () {
+    $exitCode = $this->artisan('doctor')->run();
+
+    expect($exitCode)->toBeIn([0, 1]);
+});
+
 it('builds a tableplus mysql connection url', function () {
-    $opener = new App\Support\ServiceOpener;
+    $opener = new ServiceOpener;
 
     $url = $opener->buildConnectionUrl(
         driver: 'mysql',
         host: '127.0.0.1',
         port: 3306,
-        database: 'laravel',
         user: 'root',
         name: 'stackd mysql:laravel',
     );
 
-    expect($url)->toBe('mysql://root@127.0.0.1:3306/laravel?env=local&name=stackd+mysql%3Alaravel');
+    expect($url)->toBe('mysql://root@127.0.0.1:3306?env=local&name=stackd+mysql%3Alaravel');
+});
+
+it('builds a tableplus redis connection url for valkey', function () {
+    $opener = new ServiceOpener;
+
+    $url = $opener->buildConnectionUrl(
+        driver: 'redis',
+        host: '127.0.0.1',
+        port: 6379,
+        name: 'stackd valkey:cache',
+    );
+
+    expect($url)->toBe('redis://127.0.0.1:6379?env=local&name=stackd+valkey%3Acache');
+});
+
+it('formats credentials for display', function () {
+    expect(\App\Support\CredentialFormatter::display([
+        'username' => 'root',
+        'password' => '',
+    ]))->toBe([
+        'username' => 'root',
+        'password' => '(empty)',
+    ])->and(\App\Support\CredentialFormatter::summary([
+        'username' => 'laravel',
+        'password' => '',
+    ]))->toBe('laravel / (empty)');
 });

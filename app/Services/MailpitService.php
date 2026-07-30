@@ -112,8 +112,8 @@ class MailpitService extends AbstractService
         $url = str_replace('{arch}', $arch, config('stackd.downloads.mailpit.url'));
         $archive = $destination.'/'.basename(parse_url($url, PHP_URL_PATH));
 
-        $this->binaries->download($url, $archive);
-        $this->binaries->extractTarGz($archive, $destination);
+        $this->binaries->download($url, $archive, 'Mailpit');
+        $this->binaries->extractTarGz($archive, $destination, 'Mailpit');
         $this->binaries->makeExecutable($destination.'/mailpit');
         unlink($archive);
     }

@@ -16,6 +16,8 @@ class DeleteCommand extends Command
 
     protected $description = 'Delete a service instance and its data';
 
+    protected $aliases = ['remove', 'uninstall'];
+
     public function handle(InstanceManager $manager): int
     {
         try {

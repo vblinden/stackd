@@ -2,8 +2,10 @@
 
 namespace App\Commands;
 
+use App\Services\ServiceRegistry;
 use App\Support\InstanceManager;
 use App\Support\InstanceRepository;
+use App\Support\ServicesPresenter;
 use LaravelZero\Framework\Commands\Command;
 use NunoMaduro\LaravelConsoleSummary\Contracts\DescriberContract;
 
@@ -19,59 +21,39 @@ class HomeCommand extends Command
         InstanceRepository $repository,
         InstanceManager $manager,
         DescriberContract $describer,
+        ServicesPresenter $presenter,
+        ServiceRegistry $registry,
     ): int {
-        $this->renderServices($repository, $manager);
+        $presenter->render($this->output, $this->collectServices($repository, $manager, $registry), runningOnly: true);
 
         $describer->describe($this->getApplication(), $this->output);
 
         return self::SUCCESS;
     }
 
-    private function renderServices(InstanceRepository $repository, InstanceManager $manager): void
-    {
-        $instances = $repository->all();
-        $running = array_values(array_filter(
-            $instances,
-            fn ($instance) => $manager->isRunning($instance),
-        ));
-        $stoppedCount = count($instances) - count($running);
+    /**
+     * @return array<int, array{service: string, name: string, running: bool, address: string, pid: string|null, credentials: array<string, string>}>
+     */
+    private function collectServices(
+        InstanceRepository $repository,
+        InstanceManager $manager,
+        ServiceRegistry $registry,
+    ): array {
+        $services = [];
 
-        $this->newLine();
-        $this->line('  <fg=white;options=bold>Services</>');
-        $this->newLine();
-
-        if ($running === []) {
-            if ($instances === []) {
-                $this->line('  <fg=gray>No instances yet. Run <fg=cyan>stackd create &lt;service&gt;</> to get started.</>');
-            } else {
-                $this->line('  <fg=yellow>No services running.</> <fg=gray>'.$stoppedCount.' stopped</>');
-            }
-
-            $this->newLine();
-
-            return;
-        }
-
-        $rows = [];
-
-        foreach ($running as $instance) {
+        foreach ($repository->all() as $instance) {
             $status = $manager->statusFor($instance);
 
-            $rows[] = [
-                $instance->service,
-                $instance->name,
-                '<fg=green>running</>',
-                config('stackd.bind_address').':'.$instance->port,
-                $status['pid'] ? (string) $status['pid'] : '-',
+            $services[] = [
+                'service' => $instance->service,
+                'name' => $instance->name,
+                'running' => $status['running'],
+                'address' => config('stackd.bind_address').':'.$instance->port,
+                'pid' => $status['pid'] ? (string) $status['pid'] : null,
+                'credentials' => $registry->get($instance->service)->credentials($instance),
             ];
         }
 
-        $this->table(['Service', 'Name', 'Status', 'Address', 'PID'], $rows);
-
-        if ($stoppedCount > 0) {
-            $this->line("  <fg=gray>{$stoppedCount} service(s) stopped — run <fg=cyan>stackd status</> for details</>");
-        }
-
-        $this->newLine();
+        return $services;
     }
 }

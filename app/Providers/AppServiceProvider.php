@@ -3,10 +3,15 @@
 namespace App\Providers;
 
 use App\Services\MailpitService;
+use App\Services\MariaDbService;
+use App\Services\MeilisearchService;
+use App\Services\MinioService;
 use App\Services\MySqlService;
+use App\Services\PostgreSqlService;
 use App\Services\ServiceRegistry;
 use App\Services\ValkeyService;
 use App\Support\BinaryDownloader;
+use App\Support\InstallProgress;
 use App\Support\InstanceManager;
 use App\Support\InstanceRepository;
 use App\Support\LaunchAgentManager;
@@ -23,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(StackdPaths::class, fn () => StackdPaths::make());
         $this->app->singleton(ProcessManager::class);
+        $this->app->singleton(InstallProgress::class);
         $this->app->singleton(BinaryDownloader::class);
         $this->app->singleton(InstanceRepository::class);
         $this->app->singleton(InstanceManager::class);
@@ -36,6 +42,10 @@ class AppServiceProvider extends ServiceProvider
                 MailpitService::class,
                 ValkeyService::class,
                 MySqlService::class,
+                MariaDbService::class,
+                PostgreSqlService::class,
+                MeilisearchService::class,
+                MinioService::class,
             ] as $serviceClass) {
                 $registry->register($app->make($serviceClass));
             }

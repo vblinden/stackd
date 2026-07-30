@@ -6,6 +6,9 @@ use App\Commands\Concerns\ResolvesServiceInput;
 use App\Support\InstanceManager;
 use LaravelZero\Framework\Commands\Command;
 
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+
 class StartCommand extends Command
 {
     use ResolvesServiceInput;
@@ -20,12 +23,15 @@ class StartCommand extends Command
     {
         try {
             $service = $this->resolveServiceType($this->argument('service'));
-            $manager->start($service, $this->argument('name'));
-            $this->components->info("Started {$service}".($this->argument('name') ? ' '.$this->argument('name') : ''));
+            $name = $this->argument('name');
+            $label = $service.($name ? " {$name}" : '');
+
+            $manager->start($service, $name);
+            info("Started {$label}");
 
             return self::SUCCESS;
         } catch (\Throwable $e) {
-            $this->components->error($e->getMessage());
+            error($e->getMessage());
 
             return self::FAILURE;
         }
