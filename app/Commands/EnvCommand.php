@@ -17,7 +17,7 @@ class EnvCommand extends Command
                             {name? : Instance name}
                             {--write : Write variables to the current Laravel .env file}';
 
-    protected $description = 'Print or write Laravel .env lines for stackd services';
+    protected $description = 'Print or write Laravel .env lines for installed stackd services';
 
     public function handle(
         InstanceManager $manager,
@@ -34,7 +34,8 @@ class EnvCommand extends Command
                 $variables = $manager->envForServices($services);
 
                 if ($variables === []) {
-                    $this->components->warn('No matching stackd instances found for this project.');
+                    $this->components->warn('No stackd instances found.');
+                    $this->line('  Create one with: <fg=cyan>stackd create</>');
 
                     return self::FAILURE;
                 }

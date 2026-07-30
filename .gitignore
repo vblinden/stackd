@@ -21,7 +21,8 @@
 Thumbs.db
 
 /build/
-/builds/
+/builds/*
+!/builds/stackd
 /stackd.phar
 /dumps/
 

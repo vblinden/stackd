@@ -37,6 +37,7 @@ class Doctor
     {
         $os = PHP_OS_FAMILY;
         $php = PHP_VERSION;
+        $phpSupported = version_compare($php, '8.2.0', '>=') && version_compare($php, '8.6.0', '<');
 
         return [
             new DoctorCheck(
@@ -48,8 +49,8 @@ class Doctor
             new DoctorCheck(
                 group: 'Environment',
                 label: 'PHP version',
-                status: version_compare($php, '8.2.0', '>=') ? DoctorCheck::PASS : DoctorCheck::FAIL,
-                message: $php,
+                status: $phpSupported ? DoctorCheck::PASS : DoctorCheck::FAIL,
+                message: $phpSupported ? $php : "{$php} (requires PHP 8.2–8.5)",
             ),
             new DoctorCheck(
                 group: 'Environment',

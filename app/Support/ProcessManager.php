@@ -17,7 +17,7 @@ class ProcessManager
 
         if (! $this->pidExists($pid)) {
             if (file_exists($pidFile)) {
-                unlink($pidFile);
+                @unlink($pidFile);
             }
 
             return false;

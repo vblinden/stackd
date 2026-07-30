@@ -28,7 +28,7 @@ class DoctorCommand extends Command
 
         render(<<<'HTML'
             <div class="mt-1 ml-1">
-                <span class="font-bold text-white">stackd doctor</span>
+                <span class="font-bold">stackd doctor</span>
             </div>
         HTML);
 
@@ -52,7 +52,7 @@ class DoctorCommand extends Command
                 render(<<<HTML
                     <div class="ml-1">
                         <span class="{$color}">{$icon}</span>
-                        <span class="ml-1 font-bold text-white">{$label}</span>
+                        <span class="ml-1 font-bold">{$label}</span>
                         <span class="ml-1 text-gray-500">{$message}</span>
                     </div>
                 HTML);

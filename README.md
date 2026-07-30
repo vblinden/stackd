@@ -4,7 +4,7 @@
 
 Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO — then connect any Laravel project to them. Built to sit alongside [Laravel Valet](https://laravel.com/docs/valet) without Docker.
 
-[![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?style=flat-square)](https://www.php.net/)
+[![PHP Version](https://img.shields.io/badge/PHP-8.2%E2%80%938.5-777BB4?style=flat-square)](https://www.php.net/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square)](#requirements)
 
@@ -12,7 +12,7 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 
 - **Services** — MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO
 - **Global instances** — one MySQL for all your apps, not a container per project
-- **Laravel-friendly** — `stackd env --write` drops the right `.env` values into your app
+- **Laravel-friendly** — `stackd env --write` overwrites your `.env` with every installed stackd service (MySQL, Mailpit, …)
 - **No Docker required** — downloads (or builds) native binaries on demand
 - **macOS native** — binds to `127.0.0.1`, optional LaunchAgent start-at-login
 - **TablePlus & browser ready** — `stackd open` launches the right client
@@ -20,7 +20,7 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 ## Requirements
 
 - macOS
-- PHP 8.2+
+- PHP 8.2–8.5
 - [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/) (Valkey / MariaDB compile)
 - `cmake` and OpenSSL for MariaDB (stackd can install these via Homebrew when prompted)
 
@@ -28,13 +28,11 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 
 ### Via Composer (recommended)
 
-Installs a tiny wrapper that downloads the release PHAR — it does **not** pull Laravel Zero into your lockfile:
-
 ```bash
 composer global require vblinden/stackd
 ```
 
-Make sure Composer's global `bin` directory is on your `PATH`.
+This installs the prebuilt PHAR from the package (`builds/stackd`). Make sure Composer's global `bin` directory is on your `PATH`.
 
 ### PHAR
 
@@ -71,7 +69,7 @@ stackd create mysql
 stackd create valkey
 stackd create mailpit
 
-# From a Laravel project root
+# From a Laravel project root — overwrites .env for all installed stackd services
 stackd env --write
 
 # Open clients
@@ -97,7 +95,7 @@ stackd status
 | `stackd list` | List instances as a table |
 | `stackd delete` / `remove` / `uninstall` | Delete an instance and its data |
 | `stackd env [service] [name]` | Print Laravel `.env` lines |
-| `stackd env --write` | Merge into the current project's `.env` |
+| `stackd env --write` | Overwrite `.env` keys for all installed stackd services |
 | `stackd open <service> [name]` | Open TablePlus or the web UI |
 | `stackd logs <service> [name]` | Tail instance logs |
 | `stackd doctor` | Diagnose install & dependencies |
@@ -127,12 +125,12 @@ Binaries are fetched the first time you create a service. MariaDB and Valkey com
 ## Building a PHAR
 
 ```bash
-composer install --no-dev
-php stackd app:build stackd --build-version=dev
+composer install
+php stackd app:build stackd --build-version=v1.0.4
 php builds/stackd --version
 ```
 
-Tagged releases (`v*`) build the PHAR in GitHub Actions and attach it to the GitHub release automatically.
+Commit `builds/stackd` before tagging. Packagist serves that PHAR via `composer global require`; tagged releases (`v*`) also attach it to the GitHub release.
 
 ## Contributing
 

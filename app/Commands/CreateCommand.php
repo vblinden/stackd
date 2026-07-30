@@ -101,7 +101,7 @@ class CreateCommand extends Command
             render(<<<HTML
                 <div class="ml-1">
                     <span class="text-gray-500">{$safeLabel}:</span>
-                    <span class="ml-1 text-white">{$safeValue}</span>
+                    <span class="ml-1 font-bold">{$safeValue}</span>
                 </div>
             HTML);
         }
@@ -125,7 +125,7 @@ class CreateCommand extends Command
 
         render(<<<'HTML'
             <div class="mt-1 ml-1">
-                <span class="font-bold text-white">Create a service</span>
+                <span class="font-bold">Create a service</span>
             </div>
         HTML);
 
@@ -140,7 +140,7 @@ class CreateCommand extends Command
     {
         render(<<<'HTML'
             <div class="mt-1 ml-1">
-                <span class="font-bold text-white">Available services</span>
+                <span class="font-bold">Available services</span>
             </div>
         HTML);
 
@@ -155,7 +155,7 @@ class CreateCommand extends Command
 
             render(<<<HTML
                 <div class="ml-1">
-                    <span class="font-bold text-white">{$type}</span>
+                    <span class="font-bold">{$type}</span>
                     <span class="ml-2 text-gray-500">{$name}</span>
                     <span class="ml-2 text-cyan-400">:{$port}</span>
                     <span class="ml-2">{$status}</span>

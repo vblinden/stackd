@@ -4,6 +4,12 @@ namespace App\Support;
 
 class LaravelProjectDetector
 {
+    private const DATABASE_SERVICES = ['mysql', 'mariadb', 'postgresql'];
+
+    public function __construct(
+        private readonly ?InstanceRepository $instances = null,
+    ) {}
+
     public function isLaravelProject(?string $path = null): bool
     {
         $path = $path ?? getcwd();
@@ -16,44 +22,91 @@ class LaravelProjectDetector
         return ($path ?? getcwd()).'/.env';
     }
 
+    /**
+     * Services whose Laravel .env keys should be printed / overwritten.
+     *
+     * Uses every installed stackd instance (mailpit, valkey, …). At most one
+     * database service is included so DB_* keys do not clash — matching
+     * DB_CONNECTION when possible, otherwise the first installed DB.
+     *
+     * @return list<string>
+     */
     public function detectNeededServices(?string $envPath = null): array
+    {
+        if ($this->instances === null) {
+            return config('stackd.services');
+        }
+
+        $installed = [];
+
+        foreach (config('stackd.services') as $type) {
+            if ($this->instances->defaultForService($type) !== null) {
+                $installed[] = $type;
+            }
+        }
+
+        if ($installed === []) {
+            return [];
+        }
+
+        $databases = array_values(array_intersect(self::DATABASE_SERVICES, $installed));
+        $others = array_values(array_diff($installed, self::DATABASE_SERVICES));
+
+        $services = $others;
+
+        if ($databases !== []) {
+            $contents = $this->readEnvContents($envPath);
+            $database = $this->pickDatabaseService($contents, $databases);
+            array_unshift($services, $database);
+        }
+
+        return $services;
+    }
+
+    private function readEnvContents(?string $envPath): string
     {
         if ($envPath === null) {
             if (! $this->isLaravelProject()) {
-                return config('stackd.services');
+                return '';
             }
 
             $envPath = $this->envPath();
         }
 
         if (! file_exists($envPath)) {
-            return config('stackd.services');
+            return '';
         }
 
-        $contents = file_get_contents($envPath);
-        $services = [];
+        return (string) file_get_contents($envPath);
+    }
 
-        $map = [
-            'DB_CONNECTION=mysql' => 'mysql',
-            'DB_CONNECTION=mariadb' => 'mariadb',
-            'DB_CONNECTION=pgsql' => 'postgresql',
-            'REDIS_HOST=' => 'valkey',
-            'CACHE_STORE=redis' => 'valkey',
-            'SESSION_DRIVER=redis' => 'valkey',
-            'QUEUE_CONNECTION=redis' => 'valkey',
-            'MAIL_HOST=' => 'mailpit',
-            'MAIL_MAILER=smtp' => 'mailpit',
-            'SCOUT_DRIVER=meilisearch' => 'meilisearch',
-            'MEILISEARCH_HOST=' => 'meilisearch',
-            'AWS_ENDPOINT=' => 'minio',
-        ];
+    /**
+     * @param  list<string>  $installedDatabases
+     * @return 'mysql'|'mariadb'|'postgresql'
+     */
+    public function pickDatabaseService(string $contents, array $installedDatabases): string
+    {
+        if ($contents !== '' && preg_match('/^DB_CONNECTION=(.*)$/m', $contents, $matches) === 1) {
+            $connection = strtolower(trim($matches[1], " \t\"'"));
 
-        foreach ($map as $needle => $service) {
-            if (str_contains($contents, $needle) && ! in_array($service, $services, true)) {
-                $services[] = $service;
+            $mapped = match ($connection) {
+                'mysql' => 'mysql',
+                'mariadb' => 'mariadb',
+                'pgsql', 'postgresql' => 'postgresql',
+                default => null,
+            };
+
+            if ($mapped !== null && in_array($mapped, $installedDatabases, true)) {
+                return $mapped;
             }
         }
 
-        return $services !== [] ? $services : ['mysql', 'valkey', 'mailpit'];
+        foreach (self::DATABASE_SERVICES as $service) {
+            if (in_array($service, $installedDatabases, true)) {
+                return $service;
+            }
+        }
+
+        return $installedDatabases[0];
     }
 }

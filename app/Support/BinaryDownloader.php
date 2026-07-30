@@ -90,7 +90,7 @@ class BinaryDownloader
 
         $ok = curl_exec($ch);
         $error = curl_error($ch);
-        curl_close($ch);
+        unset($ch);
         fclose($handle);
 
         if ($ok === false) {

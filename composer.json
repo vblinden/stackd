@@ -22,7 +22,7 @@
         "issues": "https://github.com/vblinden/stackd/issues",
         "source": "https://github.com/vblinden/stackd"
     },
-    "type": "library",
+    "type": "project",
     "license": "MIT",
     "authors": [
         {
@@ -31,7 +31,7 @@
         }
     ],
     "require": {
-        "php": "^8.2",
+        "php": "~8.2.0 || ~8.3.0 || ~8.4.0 || ~8.5.0",
         "ext-curl": "*",
         "ext-json": "*"
     },
@@ -70,6 +70,6 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "bin": [
-        "bin/stackd"
+        "builds/stackd"
     ]
 }

@@ -1,0 +1,17 @@
+* text=auto
+
+/.editorconfig   export-ignore
+/.env.example    export-ignore
+/.gitattributes  export-ignore
+/.github         export-ignore
+/.gitignore      export-ignore
+/app             export-ignore
+/application     export-ignore
+/bin             export-ignore
+/bootstrap       export-ignore
+/box.json        export-ignore
+/config          export-ignore
+/phpunit.xml.dist export-ignore
+/stackd          export-ignore
+/tests           export-ignore
+/composer.lock   export-ignore
