@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  phar:
+    name: Build PHAR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, json, mbstring, pcntl, phar, zlib
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Build PHAR
+        run: php stackd app:build stackd --build-version="${GITHUB_REF_NAME}" -q
+
+      - name: Smoke test PHAR
+        run: |
+          php builds/stackd --version
+          php builds/stackd list >/dev/null
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: builds/stackd
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

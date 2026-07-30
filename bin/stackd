@@ -1,0 +1,117 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Composer bin stub: runs a cached GitHub-release PHAR so global installs
+ * don't need Laravel Zero in the lockfile.
+ */
+
+$root = dirname(__DIR__);
+$args = array_slice($argv, 1);
+$escapedArgs = '';
+
+foreach ($args as $arg) {
+    $escapedArgs .= ' '.escapeshellarg($arg);
+}
+
+// Local checkout with full dependencies — run the Laravel Zero app directly.
+if (is_file($root.'/stackd') && is_dir($root.'/vendor/laravel-zero/framework')) {
+    passthru(escapeshellarg(PHP_BINARY).' '.escapeshellarg($root.'/stackd').$escapedArgs, $exitCode);
+    exit($exitCode);
+}
+
+foreach ([$root.'/vendor/autoload.php', $root.'/../../autoload.php'] as $autoload) {
+    if (is_file($autoload)) {
+        require $autoload;
+        break;
+    }
+}
+
+$version = null;
+
+if (class_exists(Composer\InstalledVersions::class) && Composer\InstalledVersions::isInstalled('vblinden/stackd')) {
+    $pretty = (string) Composer\InstalledVersions::getPrettyVersion('vblinden/stackd');
+    $pretty = ltrim($pretty, 'v');
+
+    if (preg_match('/^\d+\.\d+\.\d+/', $pretty, $matches) === 1) {
+        $version = $matches[0];
+    }
+}
+
+$home = getenv('HOME') ?: sys_get_temp_dir();
+$cacheDir = getenv('STACKD_PHAR_DIR') ?: ($home.'/.stackd/bin');
+
+if (! is_dir($cacheDir) && ! mkdir($cacheDir, 0755, true) && ! is_dir($cacheDir)) {
+    fwrite(STDERR, "Unable to create PHAR cache directory: {$cacheDir}\n");
+    exit(1);
+}
+
+$downloadUrl = getenv('STACKD_PHAR_URL') ?: ($version !== null
+    ? "https://github.com/vblinden/stackd/releases/download/v{$version}/stackd"
+    : 'https://github.com/vblinden/stackd/releases/latest/download/stackd');
+
+$pharPath = $cacheDir.'/stackd'.($version !== null ? "-{$version}" : '-latest');
+$metaPath = $pharPath.'.url';
+
+$needsDownload = ! is_file($pharPath)
+    || ! is_file($metaPath)
+    || trim((string) file_get_contents($metaPath)) !== $downloadUrl;
+
+if ($needsDownload) {
+    $label = $version !== null ? "v{$version}" : 'latest';
+    fwrite(STDERR, "Downloading stackd ({$label})...\n");
+    downloadStackdPhar($downloadUrl, $pharPath);
+    file_put_contents($metaPath, $downloadUrl."\n");
+    chmod($pharPath, 0755);
+}
+
+passthru(escapeshellarg(PHP_BINARY).' '.escapeshellarg($pharPath).$escapedArgs, $exitCode);
+exit($exitCode);
+
+function downloadStackdPhar(string $url, string $destination): void
+{
+    $tmp = $destination.'.partial';
+
+    if (is_file($tmp)) {
+        unlink($tmp);
+    }
+
+    $handle = fopen($tmp, 'w');
+
+    if ($handle === false) {
+        fwrite(STDERR, "Unable to write PHAR to {$destination}\n");
+        exit(1);
+    }
+
+    $ch = curl_init($url);
+
+    if ($ch === false) {
+        fclose($handle);
+        fwrite(STDERR, "Unable to start PHAR download from {$url}\n");
+        exit(1);
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_FILE => $handle,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_FAILONERROR => true,
+        CURLOPT_TIMEOUT => 120,
+        CURLOPT_USERAGENT => 'vblinden-stackd-composer-installer',
+    ]);
+
+    $ok = curl_exec($ch);
+    $error = curl_error($ch);
+    curl_close($ch);
+    fclose($handle);
+
+    if ($ok === false) {
+        @unlink($tmp);
+        fwrite(STDERR, "Failed to download stackd PHAR from {$url}".($error !== '' ? ": {$error}" : '')."\n");
+        fwrite(STDERR, "Install from source or download manually from GitHub Releases.\n");
+        exit(1);
+    }
+
+    rename($tmp, $destination);
+}

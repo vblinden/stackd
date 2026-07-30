@@ -17,6 +17,40 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 - **macOS native** — binds to `127.0.0.1`, optional LaunchAgent start-at-login
 - **TablePlus & browser ready** — `stackd open` launches the right client
 
+## Requirements
+
+- macOS
+- PHP 8.2+
+- [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/) (Valkey / MariaDB compile)
+- `cmake` and OpenSSL for MariaDB (stackd can install these via Homebrew when prompted)
+
+## Installation
+
+### Via Composer (recommended)
+
+Installs a tiny wrapper that downloads the release PHAR — it does **not** pull Laravel Zero into your lockfile:
+
+```bash
+composer global require vblinden/stackd
+```
+
+Make sure Composer's global `bin` directory is on your `PATH`.
+
+### PHAR
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vblinden/stackd/master/bin/install.sh | bash
+```
+
+Or install manually:
+
+```bash
+curl -fsSL https://github.com/vblinden/stackd/releases/latest/download/stackd -o stackd
+chmod +x stackd
+sudo mv stackd /usr/local/bin/stackd
+stackd doctor
+```
+
 ## Default credentials
 
 | Service | Username | Password |
@@ -25,38 +59,6 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 | PostgreSQL | `laravel` | *(empty)* |
 | MinIO | `stackd` | `secretkey` |
 | Meilisearch | — | random master key (shown on create) |
-
-## Requirements
-
-- macOS
-- PHP 8.2+ with Composer
-- [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/) (Valkey / MariaDB compile)
-- `cmake` and OpenSSL for MariaDB (stackd can install these via Homebrew when prompted)
-
-## Installation
-
-### Via Composer
-
-```bash
-composer global require vblinden/stackd
-```
-
-Make sure Composer's global `bin` directory is on your `PATH`.
-
-### From source
-
-```bash
-git clone https://github.com/vblinden/stackd.git
-cd stackd
-composer install
-./stackd doctor
-```
-
-Optionally link it onto your PATH:
-
-```bash
-sudo ln -sf "$(pwd)/stackd" /usr/local/bin/stackd
-```
 
 ## Quick start
 
@@ -126,8 +128,11 @@ Binaries are fetched the first time you create a service. MariaDB and Valkey com
 
 ```bash
 composer install --no-dev
-php stackd app:build stackd
+php stackd app:build stackd --build-version=dev
+php builds/stackd --version
 ```
+
+Tagged releases (`v*`) build the PHAR in GitHub Actions and attach it to the GitHub release automatically.
 
 ## Contributing
 
