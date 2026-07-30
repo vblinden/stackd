@@ -4,6 +4,7 @@ use App\Support\CredentialFormatter;
 use App\Support\EnvWriter;
 use App\Support\HomebrewConflict;
 use App\Support\Instance;
+use App\Support\InstanceManager;
 use App\Support\InstanceRepository;
 use App\Support\LaravelProjectDetector;
 use App\Support\ProcessManager;
@@ -55,6 +56,33 @@ it('shows home screen with help', function () {
 
 it('lists available services when create has no argument', function () {
     $this->artisan('create')->assertSuccessful();
+});
+
+it('starts and stops all instances when no service is given', function () {
+    $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
+    mkdir($home, 0755, true);
+    config(['stackd.home' => $home]);
+
+    app()->forgetInstance(StackdPaths::class);
+    app()->instance(StackdPaths::class, new StackdPaths($home));
+    app()->forgetInstance(InstanceRepository::class);
+    app()->forgetInstance(InstanceManager::class);
+
+    $this->artisan('start')->assertSuccessful();
+    $this->artisan('stop')->assertSuccessful();
+
+    $paths = new StackdPaths($home);
+    $repository = new InstanceRepository($paths);
+    $repository->save(new Instance(service: 'mailpit', name: 'default', port: 1025));
+    $repository->save(new Instance(service: 'valkey', name: 'cache', port: 6379));
+
+    app()->forgetInstance(InstanceRepository::class);
+    app()->forgetInstance(InstanceManager::class);
+
+    $manager = app(InstanceManager::class);
+
+    // stopAll should walk every registered instance even when none are running.
+    expect($manager->stopAll())->toHaveCount(2);
 });
 
 it('resolves dotted mysql version keys from config', function () {

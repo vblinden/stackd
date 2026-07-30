@@ -110,6 +110,44 @@ class InstanceManager
         $this->registry->get($serviceType)->stop($instance);
     }
 
+    /**
+     * Start every registered instance that is not already running.
+     *
+     * @return list<Instance>
+     */
+    public function startAll(): array
+    {
+        $started = [];
+
+        foreach ($this->repository->all() as $instance) {
+            if ($this->isRunning($instance)) {
+                continue;
+            }
+
+            $this->registry->get($instance->service)->start($instance);
+            $started[] = $instance;
+        }
+
+        return $started;
+    }
+
+    /**
+     * Stop every registered instance.
+     *
+     * @return list<Instance>
+     */
+    public function stopAll(): array
+    {
+        $stopped = [];
+
+        foreach ($this->repository->all() as $instance) {
+            $this->registry->get($instance->service)->stop($instance);
+            $stopped[] = $instance;
+        }
+
+        return $stopped;
+    }
+
     public function restart(string $serviceType, ?string $name = null): void
     {
         $instance = $this->resolveInstance($serviceType, $name);

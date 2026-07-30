@@ -90,8 +90,8 @@ stackd status
 | Command | Description |
 |---------|-------------|
 | `stackd create` / `add` | Create (and start) a service instance |
-| `stackd start <service> [name]` | Start an instance |
-| `stackd stop <service> [name]` | Stop an instance |
+| `stackd start [service] [name]` | Start an instance, or all instances when no service is given |
+| `stackd stop [service] [name]` | Stop an instance, or all instances when no service is given |
 | `stackd restart <service> [name]` | Restart an instance |
 | `stackd status` | Show all instances |
 | `stackd list` | List instances as a table |
