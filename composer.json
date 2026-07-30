@@ -1,17 +1,38 @@
 {
-    "name": "stackd/stackd",
-    "description": "Local development service manager for macOS — works with Laravel Valet",
-    "keywords": ["laravel", "valet", "mysql", "valkey", "mailpit", "cli", "macos", "development"],
-    "homepage": "https://github.com/stackd/stackd",
+    "name": "vblinden/stackd",
+    "description": "Local database and service manager for macOS — MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO for Laravel development",
+    "keywords": [
+        "cli",
+        "development",
+        "laravel",
+        "macos",
+        "mailpit",
+        "mariadb",
+        "meilisearch",
+        "minio",
+        "mysql",
+        "postgresql",
+        "redis",
+        "valet",
+        "valkey"
+    ],
+    "homepage": "https://github.com/vblinden/stackd",
+    "support": {
+        "issues": "https://github.com/vblinden/stackd/issues",
+        "source": "https://github.com/vblinden/stackd"
+    },
     "type": "project",
     "license": "MIT",
     "authors": [
         {
-            "name": "stackd contributors"
+            "name": "vblinden",
+            "homepage": "https://github.com/vblinden"
         }
     ],
     "require": {
         "php": "^8.2",
+        "ext-curl": "*",
+        "ext-json": "*",
         "laravel-zero/framework": "^12.0.2",
         "laravel/prompts": "^0.3.21",
         "nunomaduro/termwind": "^2.4"
@@ -20,6 +41,9 @@
         "laravel/pint": "^1.25.1",
         "mockery/mockery": "^1.6.12",
         "pestphp/pest": "^3.8.4|^4.1.2"
+    },
+    "suggest": {
+        "ext-pcntl": "Needed for animated spinners in Laravel Prompts"
     },
     "autoload": {
         "psr-4": {
@@ -41,5 +65,7 @@
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
-    "bin": ["stackd"]
+    "bin": [
+        "stackd"
+    ]
 }

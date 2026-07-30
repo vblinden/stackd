@@ -22,6 +22,7 @@ Thumbs.db
 
 /build/
 /stackd.phar
+/dumps/
 
 composer.phar
 /auth.json

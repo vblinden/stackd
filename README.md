@@ -1,112 +1,149 @@
 # stackd
 
-A local development service manager for macOS, inspired by DBngin and Laravel Herd Pro services. Manage global named instances of common services that any Laravel project can connect to — designed to work alongside [Laravel Valet](https://laravel.com/docs/valet).
+**Local database and service manager for macOS.**
 
-## Features
+Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO — then connect any Laravel project to them. Built to sit alongside [Laravel Valet](https://laravel.com/docs/valet) without Docker.
 
-- **Global named instances** — machine-wide services, not per-project
-- **Laravel-friendly** — `stackd env --write` updates your `.env`
-- **macOS native** — launchd autostart, binds to `127.0.0.1`
-- **On-demand downloads** — binaries fetched from official sources when you `create` an instance
-- **Extensible** — clean service abstraction for adding new services
+[![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?style=flat-square)](https://www.php.net/)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square)](#requirements)
+
+## Why stackd?
+
+- **Global instances** — one MySQL for all your apps, not a container per project
+- **Laravel-friendly** — `stackd env --write` drops the right `.env` values into your app
+- **No Docker required** — downloads (or builds) native binaries on demand
+- **macOS native** — binds to `127.0.0.1`, optional LaunchAgent start-at-login
+- **TablePlus & browser ready** — `stackd open` launches the right client
 
 ## Supported services
 
-| Service | Status |
-|---------|--------|
-| MySQL | ✅ Implemented |
-| MariaDB | ✅ Implemented (builds from source — no official macOS binaries) |
-| PostgreSQL | ✅ Implemented |
-| Valkey | ✅ Implemented |
-| Mailpit | ✅ Implemented |
-| Meilisearch | ✅ Implemented |
-| MinIO | ✅ Implemented |
+| Service | Default port | Notes |
+|---------|-------------:|-------|
+| MySQL | `3306` | Official macOS tarball |
+| MariaDB | `3307` | Built from source (`cmake` + OpenSSL) |
+| PostgreSQL | `5432` | Prebuilt Darwin binaries |
+| Valkey | `6379` | Redis-compatible, compiled from source |
+| Mailpit | `1025` | SMTP + web UI |
+| Meilisearch | `7700` | Search engine |
+| MinIO | `9000` | S3-compatible object storage (console on `+1`) |
+
+Default credentials (where applicable):
+
+| Service | Username | Password |
+|---------|----------|----------|
+| MySQL / MariaDB | `root` | *(empty)* |
+| PostgreSQL | `laravel` | *(empty)* |
+| MinIO | `stackd` | `secretkey` |
+| Meilisearch | — | random master key (shown on create) |
+
+## Requirements
+
+- macOS
+- PHP 8.2+ with Composer
+- [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/) (Valkey / MariaDB compile)
+- `cmake` and OpenSSL for MariaDB (stackd can install these via Homebrew when prompted)
 
 ## Installation
 
-### Local development
+### From source
 
 ```bash
-git clone <repo>
+git clone https://github.com/vblinden/stackd.git
 cd stackd
 composer install
-./stackd list
+./stackd doctor
 ```
 
-### Global via Composer (planned)
+Optionally link it onto your PATH:
 
 ```bash
-composer global require stackd/stackd
+sudo ln -sf "$(pwd)/stackd" /usr/local/bin/stackd
 ```
+
+### Via Composer (Packagist)
+
+```bash
+composer global require vblinden/stackd
+```
+
+Make sure Composer's global `bin` directory is on your `PATH`.
 
 ## Quick start
 
 ```bash
-# Create instances
-stackd create mysql --name=laravel
-stackd create valkey --name=cache
+# Interactive picker
+stackd create
+
+# Or create directly
+stackd create mysql
+stackd create valkey
 stackd create mailpit
 
-# Start services
-stackd start mysql laravel
-stackd start valkey cache
-stackd start mailpit
-
-# Inside a Laravel project
+# From a Laravel project root
 stackd env --write
 
-# Open UIs
-stackd open mysql laravel    # TablePlus
-stackd open mailpit          # Browser
+# Open clients
+stackd open mysql      # TablePlus
+stackd open mailpit    # Browser
 
-# Autostart on login
-stackd autostart add mysql laravel
-stackd autostart add valkey cache
-stackd autostart enable
+# Check health
+stackd doctor
+stackd status
 ```
+
+`create` starts the instance immediately and can optionally add it to start-at-login.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `stackd create <service>` | Create a new instance |
+| `stackd create` / `add` | Create (and start) a service instance |
 | `stackd start <service> [name]` | Start an instance |
 | `stackd stop <service> [name]` | Stop an instance |
 | `stackd restart <service> [name]` | Restart an instance |
-| `stackd status` | Show all instance status |
-| `stackd list` | List all instances |
-| `stackd delete <service> [name]` | Delete an instance |
-| `stackd env [service] [name]` | Print `.env` lines |
-| `stackd env --write` | Write to current Laravel `.env` |
-| `stackd doctor` | Check install health and connectivity |
-| `stackd logs <service> [name]` | View logs |
-| `stackd open <service> [name]` | Open TablePlus or web UI |
-| `stackd autostart enable\|disable\|add\|remove\|list` | Manage login autostart |
+| `stackd status` | Show all instances |
+| `stackd list` | List instances as a table |
+| `stackd delete` / `remove` / `uninstall` | Delete an instance and its data |
+| `stackd env [service] [name]` | Print Laravel `.env` lines |
+| `stackd env --write` | Merge into the current project's `.env` |
+| `stackd open <service> [name]` | Open TablePlus or the web UI |
+| `stackd logs <service> [name]` | Tail instance logs |
+| `stackd doctor` | Diagnose install & dependencies |
+| `stackd autostart …` | Manage LaunchAgent start-at-login |
 
-## Data layout
+Run `stackd` with no arguments for the home screen (running services + command list).
 
-```
+## How it works
+
+Instances live under `~/.stackd/`:
+
+```text
 ~/.stackd/
-├── registry.json          # Instance metadata
-├── autostart.json         # Autostart configuration
-├── binaries/              # Downloaded service binaries
+├── registry.json       # Instance metadata
+├── autostart.json      # Start-at-login entries
+├── binaries/           # Downloaded / built binaries
 ├── instances/
-│   ├── mysql/laravel/
-│   │   ├── data/
-│   │   ├── logs/
-│   │   └── metadata.json
-│   └── ...
+│   └── mysql/default/
+│       ├── data/
+│       ├── logs/
+│       └── …
 └── logs/
 ```
 
-## Requirements
+Binaries are fetched the first time you create a service. MariaDB and Valkey compile locally; other services use official release archives.
 
-- macOS (launchd support)
-- PHP 8.2+
-- Xcode Command Line Tools (for compiling Valkey / MariaDB from source)
-- `cmake` (required to build MariaDB from source)
-- `ext-pcntl` recommended for animated spinners (Laravel Prompts)
+## Building a PHAR
+
+```bash
+composer install --no-dev
+php stackd app:build stackd
+```
+
+## Contributing
+
+Issues and pull requests are welcome on [GitHub](https://github.com/vblinden/stackd).
 
 ## License
 
-MIT
+[MIT](LICENSE)
