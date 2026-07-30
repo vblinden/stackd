@@ -21,7 +21,6 @@ A local development service manager for macOS, inspired by DBngin and Laravel He
 | Mailpit | ✅ Implemented |
 | Meilisearch | ✅ Implemented |
 | MinIO | ✅ Implemented |
-| Laravel Reverb | 🔜 Planned |
 
 ## Installation
 

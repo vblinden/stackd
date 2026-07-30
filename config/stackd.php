@@ -14,7 +14,6 @@ return [
         'mailpit',
         'meilisearch',
         'minio',
-        'reverb',
     ],
 
     'default_ports' => [
@@ -25,7 +24,6 @@ return [
         'mailpit' => 1025,
         'meilisearch' => 7700,
         'minio' => 9000,
-        'reverb' => 8080,
     ],
 
     'downloads' => [

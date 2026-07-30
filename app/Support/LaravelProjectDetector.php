@@ -46,7 +46,6 @@ class LaravelProjectDetector
             'SCOUT_DRIVER=meilisearch' => 'meilisearch',
             'MEILISEARCH_HOST=' => 'meilisearch',
             'AWS_ENDPOINT=' => 'minio',
-            'REVERB_HOST=' => 'reverb',
         ];
 
         foreach ($map as $needle => $service) {

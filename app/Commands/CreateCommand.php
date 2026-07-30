@@ -27,6 +27,8 @@ class CreateCommand extends Command
 
     protected $description = 'Create a service instance';
 
+    protected $aliases = ['add'];
+
     public function handle(
         InstanceManager $manager,
         ServiceRegistry $registry,
@@ -110,16 +112,15 @@ class CreateCommand extends Command
     private function promptForService(ServiceRegistry $registry): string
     {
         $options = [];
-        $comingSoon = [];
 
         foreach (config('stackd.services') as $type) {
-            if ($registry->has($type)) {
-                $service = $registry->get($type);
-                $port = config("stackd.default_ports.{$type}");
-                $options[$type] = "{$service->displayName()}  ·  :{$port}";
-            } else {
-                $comingSoon[] = $type;
+            if (! $registry->has($type)) {
+                continue;
             }
+
+            $service = $registry->get($type);
+            $port = config("stackd.default_ports.{$type}");
+            $options[$type] = "{$service->displayName()} (:{$port})";
         }
 
         render(<<<'HTML'
@@ -131,7 +132,7 @@ class CreateCommand extends Command
         return select(
             label: 'Which service?',
             options: $options,
-            hint: $comingSoon !== [] ? 'Coming soon: '.implode(', ', $comingSoon) : '',
+            scroll: count($options),
         );
     }
 
