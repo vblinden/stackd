@@ -14,6 +14,7 @@ class Instance implements JsonSerializable
         public array $options = [],
         public ?string $createdAt = null,
     ) {
+        InstanceName::assertValid($this->name);
         $this->createdAt ??= (new \DateTimeImmutable)->format(\DateTimeInterface::ATOM);
     }
 

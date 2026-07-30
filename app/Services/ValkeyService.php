@@ -143,6 +143,7 @@ CONF;
             destination: $buildDir,
             archiveName: $archiveName,
             label: 'Valkey source',
+            sha256: $config['sha256'] ?? null,
         );
 
         $sourceDir = is_dir($buildDir.'/'.$config['source_dir'])

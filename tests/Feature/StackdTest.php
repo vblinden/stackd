@@ -1,8 +1,13 @@
 <?php
 
+use App\Support\CredentialFormatter;
 use App\Support\EnvWriter;
+use App\Support\HomebrewConflict;
 use App\Support\Instance;
 use App\Support\InstanceRepository;
+use App\Support\LaravelProjectDetector;
+use App\Support\ProcessManager;
+use App\Support\ProjectDatabase;
 use App\Support\ServiceOpener;
 use App\Support\StackdPaths;
 
@@ -93,13 +98,13 @@ it('builds a tableplus redis connection url for valkey', function () {
 });
 
 it('formats credentials for display', function () {
-    expect(\App\Support\CredentialFormatter::display([
+    expect(CredentialFormatter::display([
         'username' => 'root',
         'password' => '',
     ]))->toBe([
         'username' => 'root',
         'password' => '(empty)',
-    ])->and(\App\Support\CredentialFormatter::summary([
+    ])->and(CredentialFormatter::summary([
         'username' => 'laravel',
         'password' => '',
     ]))->toBe('laravel / (empty)');
@@ -110,11 +115,11 @@ it('applies env for every installed stackd service', function () {
     mkdir($home, 0755, true);
     config(['stackd.home' => $home]);
 
-    $paths = new \App\Support\StackdPaths($home);
-    $repository = new \App\Support\InstanceRepository($paths);
-    $repository->save(new \App\Support\Instance(service: 'mysql', name: 'default', port: 3306));
-    $repository->save(new \App\Support\Instance(service: 'mailpit', name: 'default', port: 1025));
-    $repository->save(new \App\Support\Instance(service: 'valkey', name: 'default', port: 6379));
+    $paths = new StackdPaths($home);
+    $repository = new InstanceRepository($paths);
+    $repository->save(new Instance(service: 'mysql', name: 'default', port: 3306));
+    $repository->save(new Instance(service: 'mailpit', name: 'default', port: 1025));
+    $repository->save(new Instance(service: 'valkey', name: 'default', port: 6379));
 
     $env = sys_get_temp_dir().'/stackd-env-'.uniqid().'.env';
     file_put_contents($env, <<<'ENV'
@@ -123,7 +128,7 @@ MAIL_MAILER=log
 CACHE_STORE=database
 ENV);
 
-    $services = (new \App\Support\LaravelProjectDetector($repository))->detectNeededServices($env);
+    $services = (new LaravelProjectDetector($repository))->detectNeededServices($env);
     unlink($env);
 
     expect($services)->toBe(['mysql', 'valkey', 'mailpit']);
@@ -134,15 +139,15 @@ it('picks pgsql when that connection is set and postgresql is installed', functi
     mkdir($home, 0755, true);
     config(['stackd.home' => $home]);
 
-    $paths = new \App\Support\StackdPaths($home);
-    $repository = new \App\Support\InstanceRepository($paths);
-    $repository->save(new \App\Support\Instance(service: 'mysql', name: 'default', port: 3306));
-    $repository->save(new \App\Support\Instance(service: 'postgresql', name: 'default', port: 5432));
+    $paths = new StackdPaths($home);
+    $repository = new InstanceRepository($paths);
+    $repository->save(new Instance(service: 'mysql', name: 'default', port: 3306));
+    $repository->save(new Instance(service: 'postgresql', name: 'default', port: 5432));
 
     $env = sys_get_temp_dir().'/stackd-env-'.uniqid().'.env';
     file_put_contents($env, "DB_CONNECTION=pgsql\n");
 
-    $services = (new \App\Support\LaravelProjectDetector($repository))->detectNeededServices($env);
+    $services = (new LaravelProjectDetector($repository))->detectNeededServices($env);
     unlink($env);
 
     expect($services)->toBe(['postgresql']);
@@ -153,22 +158,22 @@ it('prefers mysql over other databases for sqlite projects', function () {
     mkdir($home, 0755, true);
     config(['stackd.home' => $home]);
 
-    $paths = new \App\Support\StackdPaths($home);
-    $repository = new \App\Support\InstanceRepository($paths);
-    $repository->save(new \App\Support\Instance(service: 'postgresql', name: 'default', port: 5432));
-    $repository->save(new \App\Support\Instance(service: 'mysql', name: 'default', port: 3306));
+    $paths = new StackdPaths($home);
+    $repository = new InstanceRepository($paths);
+    $repository->save(new Instance(service: 'postgresql', name: 'default', port: 5432));
+    $repository->save(new Instance(service: 'mysql', name: 'default', port: 3306));
 
     $env = sys_get_temp_dir().'/stackd-env-'.uniqid().'.env';
     file_put_contents($env, "DB_CONNECTION=sqlite\nDB_DATABASE=database/database.sqlite\n");
 
-    $services = (new \App\Support\LaravelProjectDetector($repository))->detectNeededServices($env);
+    $services = (new LaravelProjectDetector($repository))->detectNeededServices($env);
     unlink($env);
 
     expect($services)->toBe(['mysql']);
 });
 
 it('detects conflicting Homebrew formula names', function () {
-    $homebrew = new \App\Support\HomebrewConflict;
+    $homebrew = new HomebrewConflict;
 
     expect($homebrew->filterConflicts([
         'mysql',
@@ -194,11 +199,47 @@ it('detects conflicting Homebrew formula names', function () {
 });
 
 it('derives a safe database name from the project folder', function () {
-    $project = new \App\Support\ProjectDatabase;
+    $project = new ProjectDatabase;
 
     expect($project->nameFromPath('/Users/vblinden/Code/vblinden/checkeroni'))->toBe('checkeroni')
         ->and($project->nameFromPath('/tmp/My App!'))->toBe('My_App')
         ->and($project->nameFromPath('/tmp/123site'))->toBe('db_123site');
+});
+
+it('rejects unsafe instance names before they can become paths', function () {
+    expect(fn () => new Instance(service: 'mysql', name: '../outside', port: 3306))
+        ->toThrow(InvalidArgumentException::class)
+        ->and(fn () => new Instance(service: 'mysql', name: 'cache;touch', port: 3306))
+        ->toThrow(InvalidArgumentException::class);
+});
+
+it('reserves ports globally, including service companion ports', function () {
+    $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
+    mkdir($home, 0755, true);
+    config(['stackd.home' => $home]);
+
+    $paths = new StackdPaths($home);
+    $repository = new InstanceRepository($paths);
+    $repository->save(new Instance(
+        service: 'mailpit',
+        name: 'default',
+        port: 1025,
+        options: ['web_port' => 8025],
+    ));
+
+    expect($repository->isPortAvailable(1025))->toBeFalse()
+        ->and($repository->isPortAvailable(8025))->toBeFalse()
+        ->and($repository->isPortAvailable(80))->toBeFalse();
+});
+
+it('treats legacy PID-only files as stale instead of trusting them', function () {
+    $pidFile = sys_get_temp_dir().'/stackd-pid-'.uniqid();
+    file_put_contents($pidFile, (string) getmypid());
+
+    $processes = new ProcessManager;
+
+    expect($processes->isRunning($pidFile))->toBeFalse()
+        ->and(file_exists($pidFile))->toBeFalse();
 });
 
 it('overwrites sqlite and mail keys when merging env', function () {
@@ -212,7 +253,7 @@ MAIL_MAILER=log
 MAIL_HOST=127.0.0.1
 ENV);
 
-    (new \App\Support\EnvWriter)->mergeIntoFile($env, [
+    (new EnvWriter)->mergeIntoFile($env, [
         'DB_CONNECTION' => 'mysql',
         'DB_HOST' => '127.0.0.1',
         'DB_PORT' => '3306',

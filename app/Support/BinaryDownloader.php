@@ -20,12 +20,20 @@ class BinaryDownloader
         }
     }
 
-    public function download(string $url, string $destination, ?string $label = null): void
+    public function download(string $url, string $destination, ?string $label = null, ?string $sha256 = null): void
     {
+        if (! str_starts_with($url, 'https://')) {
+            throw new RuntimeException('Only HTTPS download URLs are supported.');
+        }
+
+        if ($sha256 !== null && preg_match('/\A[a-f0-9]{64}\z/i', $sha256) !== 1) {
+            throw new RuntimeException('Invalid SHA-256 checksum configuration.');
+        }
+
         $this->ensureDirectory(dirname($destination));
         $label ??= $this->labelFromUrl($url);
 
-        $this->progress->download($label, function (callable $onProgress) use ($url, $destination): void {
+        $this->progress->download($label, function (callable $onProgress) use ($url, $destination, $label, $sha256): void {
             $tmp = $destination.'.partial';
 
             if (file_exists($tmp)) {
@@ -36,6 +44,11 @@ class BinaryDownloader
                 $this->downloadWithCurl($url, $tmp, $onProgress);
             } else {
                 $this->downloadWithCli($url, $tmp, $onProgress);
+            }
+
+            if ($sha256 !== null && ! hash_equals(strtolower($sha256), hash_file('sha256', $tmp))) {
+                unlink($tmp);
+                throw new RuntimeException("Checksum verification failed for {$label}.");
             }
 
             $onProgress(100, (int) filesize($tmp));
@@ -80,6 +93,14 @@ class BinaryDownloader
             CURLOPT_NOPROGRESS => false,
         ];
 
+        if (defined('CURLOPT_PROTOCOLS')) {
+            $options[CURLOPT_PROTOCOLS] = CURLPROTO_HTTPS;
+        }
+
+        if (defined('CURLOPT_REDIR_PROTOCOLS')) {
+            $options[CURLOPT_REDIR_PROTOCOLS] = CURLPROTO_HTTPS;
+        }
+
         if (defined('CURLOPT_XFERINFOFUNCTION')) {
             $options[CURLOPT_XFERINFOFUNCTION] = $progressCallback;
         } else {
@@ -112,6 +133,8 @@ class BinaryDownloader
         $process = new Process([
             'curl',
             '-fL',
+            '--proto', '=https',
+            '--proto-redir', '=https',
             '--retry', '3',
             '--connect-timeout', '15',
             '-o', $tmp,
@@ -219,13 +242,13 @@ class BinaryDownloader
         return null;
     }
 
-    public function downloadExecutable(string $url, string $destination, ?string $label = null): void
+    public function downloadExecutable(string $url, string $destination, ?string $label = null, ?string $sha256 = null): void
     {
-        $this->download($url, $destination, $label);
+        $this->download($url, $destination, $label, $sha256);
         $this->makeExecutable($destination);
     }
 
-    public function installFromTarball(string $url, string $destination, string $archiveName, ?string $label = null): string
+    public function installFromTarball(string $url, string $destination, string $archiveName, ?string $label = null, ?string $sha256 = null): string
     {
         $this->ensureDirectory($destination);
         $label ??= $this->labelFromUrl($url);
@@ -233,7 +256,9 @@ class BinaryDownloader
         $archive = $destination.'/'.$archiveName;
 
         if (! file_exists($archive)) {
-            $this->download($url, $archive, $label);
+            $this->download($url, $archive, $label, $sha256);
+        } elseif ($sha256 !== null && ! hash_equals(strtolower($sha256), hash_file('sha256', $archive))) {
+            throw new RuntimeException("Checksum verification failed for {$label}.");
         }
 
         $this->extractTarGz($archive, $destination, $label);

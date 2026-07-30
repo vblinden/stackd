@@ -68,6 +68,10 @@ class LaunchAgentManager
 
     public function remove(string $service, string $name): void
     {
+        if (! $this->isEnabled()) {
+            return;
+        }
+
         $data = $this->readAutostart();
         $key = "{$service}:{$name}";
 
@@ -101,7 +105,8 @@ class LaunchAgentManager
 
         foreach ($instances as $entry) {
             [$service, $name] = explode(':', $entry, 2);
-            $commands[] = "{$stackd} start {$service} {$name}";
+            InstanceName::assertValid($name);
+            $commands[] = implode(' ', array_map('escapeshellarg', [$stackd, 'start', $service, $name]));
         }
 
         $script = "#!/bin/bash\n".implode("\n", $commands)."\n";

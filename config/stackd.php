@@ -53,6 +53,7 @@ return [
         'valkey' => [
             'version' => '9.1.1',
             'url' => 'https://github.com/valkey-io/valkey/archive/refs/tags/9.1.1.tar.gz',
+            'sha256' => '7d7232acd1b8a49b4e05d07a00b3ca8c801ae06ab633ca6a3423bc5f385ab7ee',
             'source_dir' => 'valkey-9.1.1',
         ],
         'mailpit' => [

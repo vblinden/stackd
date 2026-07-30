@@ -20,6 +20,23 @@ class InstanceRepository
         );
     }
 
+    public function synchronized(callable $callback): mixed
+    {
+        $this->paths->ensureHome();
+        $lock = fopen($this->paths->home().'/registry.lock', 'c');
+
+        if ($lock === false || ! flock($lock, LOCK_EX)) {
+            throw new RuntimeException('Unable to lock the instance registry.');
+        }
+
+        try {
+            return $callback();
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
     public function forService(string $service): array
     {
         return array_values(array_filter(
@@ -131,15 +148,38 @@ class InstanceRepository
     public function nextAvailablePort(string $service): int
     {
         $default = config("stackd.default_ports.{$service}", 9000);
-        $used = array_map(fn (Instance $i) => $i->port, $this->forService($service));
-
         $port = $default;
 
-        while (in_array($port, $used, true) || $this->portInUse($port)) {
+        while (! $this->isPortAvailable($port)) {
             $port++;
         }
 
         return $port;
+    }
+
+    public function isPortAvailable(int $port): bool
+    {
+        if ($port < 1024 || $port > 65535) {
+            return false;
+        }
+
+        foreach ($this->all() as $instance) {
+            if ($instance->port === $port || in_array($port, $this->companionPorts($instance), true)) {
+                return false;
+            }
+        }
+
+        return ! $this->portInUse($port);
+    }
+
+    /** @return list<int> */
+    private function companionPorts(Instance $instance): array
+    {
+        return match ($instance->service) {
+            'mailpit' => [(int) $instance->option('web_port', $instance->port + 7000)],
+            'minio' => [(int) $instance->option('console_port', $instance->port + 1)],
+            default => [],
+        };
     }
 
     private function portInUse(int $port): bool
@@ -171,11 +211,16 @@ class InstanceRepository
     private function writeRegistry(array $registry): void
     {
         $this->paths->ensureHome();
+        $path = $this->paths->registry();
+        $temporary = $path.'.'.bin2hex(random_bytes(8)).'.tmp';
+        $contents = json_encode($registry, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)."\n";
 
-        file_put_contents(
-            $this->paths->registry(),
-            json_encode($registry, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n",
-        );
+        file_put_contents($temporary, $contents, LOCK_EX);
+
+        if (! rename($temporary, $path)) {
+            @unlink($temporary);
+            throw new RuntimeException("Unable to update instance registry at {$path}.");
+        }
     }
 
     private function removeDirectory(string $dir): void

@@ -12,13 +12,21 @@ class InstanceManager
         private readonly ServiceRegistry $registry,
         private readonly StackdPaths $paths,
         private readonly InstallProgress $progress,
+        private readonly LaunchAgentManager $autostart,
     ) {}
 
     public function create(string $serviceType, ?string $name = null, ?int $port = null, ?string $version = null, array $options = []): Instance
     {
+        return $this->repository->synchronized(fn () => $this->createLocked($serviceType, $name, $port, $version, $options));
+    }
+
+    private function createLocked(string $serviceType, ?string $name, ?int $port, ?string $version, array $options): Instance
+    {
         $service = $this->registry->get($serviceType);
         $name = $name ?: $service->defaultName();
-        $port = $port ?: $this->repository->nextAvailablePort($serviceType);
+        $port = $port ?? $this->nextAvailablePort($serviceType);
+
+        $this->assertAvailablePorts($serviceType, $port);
 
         if ($this->repository->find($serviceType, $name) !== null) {
             throw new RuntimeException("Instance [{$serviceType}:{$name}] already exists.");
@@ -65,12 +73,18 @@ class InstanceManager
             options: $options,
         );
 
-        $this->paths->ensureHome();
-        $service->create($instance);
-        $this->repository->save($instance);
-        $this->progress->starting($instance->id(), function () use ($serviceType, $name): void {
-            $this->start($serviceType, $name);
-        });
+        try {
+            $this->paths->ensureHome();
+            $service->create($instance);
+            $this->repository->save($instance);
+            $this->progress->starting($instance->id(), function () use ($serviceType, $name): void {
+                $this->start($serviceType, $name);
+            });
+        } catch (\Throwable $e) {
+            $this->repository->delete($serviceType, $name);
+
+            throw $e;
+        }
 
         return $instance;
     }
@@ -118,6 +132,7 @@ class InstanceManager
         }
 
         $this->repository->delete($serviceType, $instance->name);
+        $this->autostart->remove($serviceType, $instance->name);
     }
 
     public function resolveInstance(string $serviceType, ?string $name = null): Instance
@@ -165,5 +180,40 @@ class InstanceManager
     public function statusFor(Instance $instance): array
     {
         return $this->registry->get($instance->service)->statusDetails($instance);
+    }
+
+    private function nextAvailablePort(string $serviceType): int
+    {
+        $port = $this->repository->nextAvailablePort($serviceType);
+
+        while (! $this->portsAreAvailable($serviceType, $port)) {
+            $port++;
+        }
+
+        return $port;
+    }
+
+    private function assertAvailablePorts(string $serviceType, int $port): void
+    {
+        if (! $this->portsAreAvailable($serviceType, $port)) {
+            throw new RuntimeException("Port {$port} (or a required companion port) is unavailable.");
+        }
+    }
+
+    private function portsAreAvailable(string $serviceType, int $port): bool
+    {
+        $ports = match ($serviceType) {
+            'mailpit' => [$port, $port + 7000],
+            'minio' => [$port, $port + 1],
+            default => [$port],
+        };
+
+        foreach ($ports as $candidate) {
+            if (! $this->repository->isPortAvailable($candidate)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

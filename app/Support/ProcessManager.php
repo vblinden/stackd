@@ -9,13 +9,18 @@ class ProcessManager
 {
     public function isRunning(string $pidFile): bool
     {
-        $pid = $this->readPid($pidFile);
+        $metadata = $this->readMetadata($pidFile);
+        $pid = $metadata['pid'] ?? null;
 
         if ($pid === null) {
+            if (file_exists($pidFile)) {
+                @unlink($pidFile);
+            }
+
             return false;
         }
 
-        if (! $this->pidExists($pid)) {
+        if (! $this->pidExists($pid) || ! $this->processMatches($pid, $metadata['command'] ?? null)) {
             if (file_exists($pidFile)) {
                 @unlink($pidFile);
             }
@@ -28,13 +33,25 @@ class ProcessManager
 
     public function readPid(string $pidFile): ?int
     {
+        return $this->readMetadata($pidFile)['pid'] ?? null;
+    }
+
+    /** @return array{pid: int, command?: string}|null */
+    private function readMetadata(string $pidFile): ?array
+    {
         if (! file_exists($pidFile)) {
             return null;
         }
 
-        $pid = (int) trim((string) file_get_contents($pidFile));
+        $contents = trim((string) file_get_contents($pidFile));
+        $data = json_decode($contents, true);
 
-        return $pid > 0 ? $pid : null;
+        if (is_array($data) && is_int($data['pid'] ?? null) && is_string($data['command'] ?? null) && $data['pid'] > 0) {
+            return ['pid' => $data['pid'], 'command' => $data['command']];
+        }
+
+        // Old PID-only files cannot prove ownership after PID reuse. Treat them as stale.
+        return null;
     }
 
     public function start(array $command, string $pidFile, string $logFile, ?string $cwd = null, array $env = []): int
@@ -71,7 +88,10 @@ class ProcessManager
             throw new RuntimeException('Failed to obtain process PID.');
         }
 
-        file_put_contents($pidFile, (string) $pid);
+        file_put_contents($pidFile, json_encode([
+            'pid' => $pid,
+            'command' => (string) $command[0],
+        ], JSON_THROW_ON_ERROR)."\n", LOCK_EX);
 
         return $pid;
     }
@@ -96,22 +116,23 @@ class ProcessManager
 
     public function stop(string $pidFile, int $signal = 15): void
     {
-        $pid = $this->readPid($pidFile);
+        $metadata = $this->readMetadata($pidFile);
+        $pid = $metadata['pid'] ?? null;
 
         if ($pid === null) {
             return;
         }
 
-        if ($this->pidExists($pid)) {
+        if ($this->pidExists($pid) && $this->processMatches($pid, $metadata['command'] ?? null)) {
             posix_kill($pid, $signal);
 
             $deadline = microtime(true) + 10;
 
-            while (microtime(true) < $deadline && $this->pidExists($pid)) {
+            while (microtime(true) < $deadline && $this->pidExists($pid) && $this->processMatches($pid, $metadata['command'])) {
                 usleep(100_000);
             }
 
-            if ($this->pidExists($pid)) {
+            if ($this->pidExists($pid) && $this->processMatches($pid, $metadata['command'])) {
                 posix_kill($pid, 9);
             }
         }
@@ -244,5 +265,22 @@ class ProcessManager
         }
 
         return posix_kill($pid, 0);
+    }
+
+    private function processMatches(int $pid, ?string $expectedCommand): bool
+    {
+        if ($expectedCommand === null || $expectedCommand === '') {
+            return false;
+        }
+
+        $process = new Process(['ps', '-p', (string) $pid, '-o', 'command=']);
+        $process->setTimeout(5);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            return false;
+        }
+
+        return str_contains(trim($process->getOutput()), $expectedCommand);
     }
 }

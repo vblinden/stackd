@@ -42,8 +42,8 @@ class EnvWriter
 
     private function escapeValue(string $value): string
     {
-        if ($value === '' || preg_match('/\s|#|"/', $value)) {
-            return '"'.str_replace('"', '\\"', $value).'"';
+        if ($value === '' || preg_match('/\s|#|"|\\\\/', $value)) {
+            return '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"';
         }
 
         return $value;
