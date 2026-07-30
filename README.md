@@ -10,25 +10,14 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 
 ## Why stackd?
 
+- **Services** — MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO
 - **Global instances** — one MySQL for all your apps, not a container per project
 - **Laravel-friendly** — `stackd env --write` drops the right `.env` values into your app
 - **No Docker required** — downloads (or builds) native binaries on demand
 - **macOS native** — binds to `127.0.0.1`, optional LaunchAgent start-at-login
 - **TablePlus & browser ready** — `stackd open` launches the right client
 
-## Supported services
-
-| Service | Default port | Notes |
-|---------|-------------:|-------|
-| MySQL | `3306` | Official macOS tarball |
-| MariaDB | `3307` | Built from source (`cmake` + OpenSSL) |
-| PostgreSQL | `5432` | Prebuilt Darwin binaries |
-| Valkey | `6379` | Redis-compatible, compiled from source |
-| Mailpit | `1025` | SMTP + web UI |
-| Meilisearch | `7700` | Search engine |
-| MinIO | `9000` | S3-compatible object storage (console on `+1`) |
-
-Default credentials (where applicable):
+## Default credentials
 
 | Service | Username | Password |
 |---------|----------|----------|
@@ -46,6 +35,14 @@ Default credentials (where applicable):
 
 ## Installation
 
+### Via Composer
+
+```bash
+composer global require vblinden/stackd
+```
+
+Make sure Composer's global `bin` directory is on your `PATH`.
+
 ### From source
 
 ```bash
@@ -60,14 +57,6 @@ Optionally link it onto your PATH:
 ```bash
 sudo ln -sf "$(pwd)/stackd" /usr/local/bin/stackd
 ```
-
-### Via Composer (Packagist)
-
-```bash
-composer global require vblinden/stackd
-```
-
-Make sure Composer's global `bin` directory is on your `PATH`.
 
 ## Quick start
 
