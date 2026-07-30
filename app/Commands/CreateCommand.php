@@ -5,14 +5,17 @@ namespace App\Commands;
 use App\Commands\Concerns\ResolvesServiceInput;
 use App\Services\ServiceRegistry;
 use App\Support\CredentialFormatter;
+use App\Support\HomebrewConflict;
 use App\Support\InstanceManager;
 use App\Support\LaunchAgentManager;
 use LaravelZero\Framework\Commands\Command;
+use RuntimeException;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\select;
+use function Laravel\Prompts\warning;
 use function Termwind\render;
 
 class CreateCommand extends Command
@@ -33,6 +36,7 @@ class CreateCommand extends Command
         InstanceManager $manager,
         ServiceRegistry $registry,
         LaunchAgentManager $autostart,
+        HomebrewConflict $homebrew,
     ): int {
         try {
             if ($this->argument('service') === null) {
@@ -44,6 +48,8 @@ class CreateCommand extends Command
             } else {
                 $service = $this->resolveServiceType($this->argument('service'));
             }
+
+            $this->resolveHomebrewConflicts($service, $homebrew);
 
             $port = $this->option('port') !== null ? (int) $this->option('port') : null;
             $startAtLogin = $this->promptForStartAtLogin();
@@ -81,6 +87,39 @@ class CreateCommand extends Command
             label: 'Start this service at login?',
             default: false,
         );
+    }
+
+    private function resolveHomebrewConflicts(string $service, HomebrewConflict $homebrew): void
+    {
+        $conflicts = $homebrew->installedConflicts($service);
+
+        if ($conflicts === []) {
+            return;
+        }
+
+        $label = implode(', ', $conflicts);
+        warning("Homebrew has {$label} installed, which often conflicts with stackd on the same ports.");
+
+        if ($this->laravel->runningUnitTests() || ! stream_isatty(STDIN) || ! stream_isatty(STDOUT)) {
+            throw new RuntimeException(
+                "Uninstall conflicting Homebrew packages first: brew uninstall --force {$label}"
+            );
+        }
+
+        $shouldUninstall = confirm(
+            label: "Uninstall {$label} with Homebrew so stackd can manage this service?",
+            default: true,
+        );
+
+        if (! $shouldUninstall) {
+            throw new RuntimeException(
+                "Create cancelled. Uninstall conflicting packages later with: brew uninstall --force {$label}"
+            );
+        }
+
+        info("Uninstalling {$label}...");
+        $homebrew->uninstall($conflicts);
+        info('Homebrew packages removed.');
     }
 
     /**

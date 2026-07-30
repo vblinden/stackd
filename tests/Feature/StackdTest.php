@@ -167,6 +167,32 @@ it('prefers mysql over other databases for sqlite projects', function () {
     expect($services)->toBe(['mysql']);
 });
 
+it('detects conflicting Homebrew formula names', function () {
+    $homebrew = new \App\Support\HomebrewConflict;
+
+    expect($homebrew->filterConflicts([
+        'mysql',
+        'mysql@8.4',
+        'mysql-client',
+        'openssl@3',
+        'redis',
+        'postgresql@16',
+        'cmake',
+    ], 'mysql'))->toBe(['mysql', 'mysql@8.4'])
+        ->and($homebrew->filterConflicts([
+            'mysql',
+            'redis',
+            'valkey',
+            'postgresql@16',
+        ], 'valkey'))->toBe(['redis', 'valkey'])
+        ->and($homebrew->filterConflicts([
+            'mysql',
+            'redis',
+            'postgresql@16',
+            'openssl@3',
+        ]))->toBe(['mysql', 'postgresql@16', 'redis']);
+});
+
 it('derives a safe database name from the project folder', function () {
     $project = new \App\Support\ProjectDatabase;
 

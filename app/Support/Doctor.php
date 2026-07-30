@@ -13,6 +13,7 @@ class Doctor
         private readonly InstanceManager $manager,
         private readonly ServiceRegistry $registry,
         private readonly BinaryDownloader $binaries,
+        private readonly HomebrewConflict $homebrew,
     ) {}
 
     /**
@@ -23,6 +24,7 @@ class Doctor
         return [
             ...$this->environmentChecks(),
             ...$this->toolingChecks(),
+            ...$this->homebrewChecks(),
             ...$this->storageChecks(),
             ...$this->endpointChecks(),
             ...$this->instanceChecks(),
@@ -82,6 +84,45 @@ class Doctor
             $this->commandCheck('make', 'Compiles Valkey / MariaDB from source', warn: true),
             $this->commandCheck('cmake', 'Builds MariaDB from source', warn: true),
             $this->commandCheck('unzip', 'Extracts zip archives', warn: true),
+        ];
+    }
+
+    /**
+     * @return array<int, DoctorCheck>
+     */
+    private function homebrewChecks(): array
+    {
+        if ($this->homebrew->findBrew() === null) {
+            return [
+                new DoctorCheck(
+                    group: 'Homebrew',
+                    label: 'brew',
+                    status: DoctorCheck::WARN,
+                    message: 'Not found — optional, used to install build tools and detect conflicts',
+                ),
+            ];
+        }
+
+        $conflicts = $this->homebrew->installedConflicts();
+
+        if ($conflicts === []) {
+            return [
+                new DoctorCheck(
+                    group: 'Homebrew',
+                    label: 'Conflicting packages',
+                    status: DoctorCheck::PASS,
+                    message: 'None of mysql/mariadb/postgresql/redis/valkey/…',
+                ),
+            ];
+        }
+
+        return [
+            new DoctorCheck(
+                group: 'Homebrew',
+                label: 'Conflicting packages',
+                status: DoctorCheck::WARN,
+                message: implode(', ', $conflicts).' — may fight stackd for ports; uninstall or use stackd create',
+            ),
         ];
     }
 

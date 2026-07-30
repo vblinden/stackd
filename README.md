@@ -23,6 +23,7 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 - PHP 8.2–8.5
 - [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/) (Valkey / MariaDB compile)
 - `cmake` and OpenSSL for MariaDB (stackd can install these via Homebrew when prompted)
+- Avoid Homebrew MySQL/Postgres/Redis on the same ports — `stackd create` detects them and can uninstall
 
 ## Installation
 
