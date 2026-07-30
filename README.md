@@ -123,6 +123,8 @@ Instances live under `~/.stackd/`:
 
 Binaries are fetched the first time you create a service. MariaDB and Valkey compile locally; other services use official release archives.
 
+Services are tuned for local macOS use: smaller memory footprints, less aggressive disk sync, and background process priority so idle instances are easier on battery. Restart existing instances (`stackd restart <service>`) to pick up the new settings.
+
 ## Building a PHAR
 
 ```bash

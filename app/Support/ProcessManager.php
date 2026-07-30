@@ -52,7 +52,8 @@ class ProcessManager
         $env = $this->filterEnvironment(array_merge($_ENV, $_SERVER, $env));
 
         $wrapped = sprintf(
-            'nohup %s >> %s 2>&1 & echo $!',
+            'nohup %s%s >> %s 2>&1 & echo $!',
+            $this->lowPowerPrefix(),
             implode(' ', array_map('escapeshellarg', $command)),
             escapeshellarg($logFile),
         );
@@ -73,6 +74,24 @@ class ProcessManager
         file_put_contents($pidFile, (string) $pid);
 
         return $pid;
+    }
+
+    /**
+     * Prefer background QoS on macOS so idle services are less aggressive on battery.
+     */
+    private function lowPowerPrefix(): string
+    {
+        if (PHP_OS_FAMILY !== 'Darwin') {
+            return '';
+        }
+
+        $prefix = 'nice -n 10 ';
+
+        if (is_executable('/usr/bin/taskpolicy')) {
+            $prefix .= '/usr/bin/taskpolicy -c background ';
+        }
+
+        return $prefix;
     }
 
     public function stop(string $pidFile, int $signal = 15): void

@@ -65,6 +65,10 @@ class MySqlService extends AbstractService implements ManagesNamedDatabases
 
         $this->installIfNeeded($instance);
 
+        $dataDir = $this->paths->dataDir($instance->service, $instance->name);
+        $socket = $this->socketPath($instance);
+        file_put_contents($this->configPath($instance), $this->buildConfig($instance, $dataDir, $socket));
+
         $mysqld = $this->mysqldPath($instance);
 
         $this->processes->start(
@@ -281,6 +285,14 @@ character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 sql_mode = STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
 skip-name-resolve
+skip-log-bin
+performance_schema = OFF
+innodb_buffer_pool_size = 128M
+innodb_log_buffer_size = 8M
+innodb_flush_log_at_trx_commit = 2
+table_open_cache = 200
+thread_cache_size = 8
+max_connections = 50
 basedir = {$this->basedir($instance)}
 CNF;
     }

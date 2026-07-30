@@ -69,6 +69,10 @@ class MariaDbService extends AbstractService implements ManagesNamedDatabases
 
         $this->installIfNeeded($instance);
 
+        $dataDir = $this->paths->dataDir($instance->service, $instance->name);
+        $socket = $this->socketPath($instance);
+        file_put_contents($this->configPath($instance), $this->buildConfig($instance, $dataDir, $socket));
+
         $this->processes->start(
             command: [$this->serverBinary(), '--defaults-file='.$this->configPath($instance)],
             pidFile: $this->pidFile($instance),
@@ -259,6 +263,16 @@ log-error = {$logDir}/error.log
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 skip-name-resolve
+skip-log-bin
+performance_schema = OFF
+innodb_buffer_pool_size = 128M
+innodb_log_buffer_size = 8M
+innodb_flush_log_at_trx_commit = 2
+aria_pagecache_buffer_size = 8M
+key_buffer_size = 8M
+table_open_cache = 200
+thread_cache_size = 8
+max_connections = 50
 basedir = {$this->basedir()}
 CNF;
     }

@@ -56,6 +56,7 @@ class MailpitService extends AbstractService
                 '--smtp', $this->bindAddress().':'.$smtpPort,
                 '--listen', $this->bindAddress().':'.$webPort,
                 '--database', $this->paths->dataDir($instance->service, $instance->name).'/mailpit.db',
+                '--max', '500',
             ],
             pidFile: $this->pidFile($instance),
             logFile: $this->outputLog($instance),

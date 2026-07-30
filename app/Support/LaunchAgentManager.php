@@ -165,6 +165,12 @@ class LaunchAgentManager
     </array>
     <key>RunAtLoad</key>
     <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>10</integer>
     <key>StandardOutPath</key>
     <string>{$logDir}/autostart.log</string>
     <key>StandardErrorPath</key>

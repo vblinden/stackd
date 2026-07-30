@@ -51,6 +51,8 @@ class ValkeyService extends AbstractService
         }
 
         $binary = $this->resolveBinary();
+        $dataDir = $this->paths->dataDir($instance->service, $instance->name);
+        file_put_contents($this->configPath($instance), $this->buildConfig($instance, $dataDir));
 
         $this->processes->start(
             command: [$binary, $this->configPath($instance)],
@@ -112,6 +114,11 @@ daemonize no
 save ""
 appendonly no
 protected-mode yes
+maxmemory 64mb
+maxmemory-policy allkeys-lru
+hz 10
+tcp-keepalive 60
+lazyfree-lazy-eviction yes
 CONF;
     }
 

@@ -63,6 +63,7 @@ class MinioService extends AbstractService
             env: [
                 'MINIO_ROOT_USER' => $accessKey,
                 'MINIO_ROOT_PASSWORD' => $secretKey,
+                'MINIO_API_REQUESTS_MAX' => '32',
             ],
         );
     }
