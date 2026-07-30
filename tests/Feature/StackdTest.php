@@ -167,6 +167,14 @@ it('prefers mysql over other databases for sqlite projects', function () {
     expect($services)->toBe(['mysql']);
 });
 
+it('derives a safe database name from the project folder', function () {
+    $project = new \App\Support\ProjectDatabase;
+
+    expect($project->nameFromPath('/Users/vblinden/Code/vblinden/checkeroni'))->toBe('checkeroni')
+        ->and($project->nameFromPath('/tmp/My App!'))->toBe('My_App')
+        ->and($project->nameFromPath('/tmp/123site'))->toBe('db_123site');
+});
+
 it('overwrites sqlite and mail keys when merging env', function () {
     $env = sys_get_temp_dir().'/stackd-env-'.uniqid().'.env';
 

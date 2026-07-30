@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Contracts\ManagesNamedDatabases;
 use App\Support\BinaryDownloader;
 use App\Support\Instance;
 use App\Support\ProcessManager;
@@ -10,7 +11,7 @@ use App\Support\StackdPaths;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 
-class MySqlService extends AbstractService
+class MySqlService extends AbstractService implements ManagesNamedDatabases
 {
     public function __construct(
         StackdPaths $paths,
@@ -166,6 +167,23 @@ class MySqlService extends AbstractService
         file_put_contents($marker, (new \DateTimeImmutable)->format(\DateTimeInterface::ATOM));
     }
 
+    public function databaseExists(Instance $instance, string $database): bool
+    {
+        $database = $this->assertSafeDatabaseName($database);
+        $output = $this->querySql(
+            $instance,
+            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{$database}'",
+        );
+
+        return trim($output) !== '';
+    }
+
+    public function createDatabase(Instance $instance, string $database): void
+    {
+        $database = $this->assertSafeDatabaseName($database);
+        $this->runSql($instance, "CREATE DATABASE IF NOT EXISTS `{$database}`");
+    }
+
     private function waitUntilReady(Instance $instance, int $timeout = 30): void
     {
         $socket = $this->socketPath($instance);
@@ -200,6 +218,33 @@ class MySqlService extends AbstractService
             '-u', 'root',
             '-e', $sql,
         ]);
+    }
+
+    private function querySql(Instance $instance, string $sql): string
+    {
+        $process = $this->processes->run([
+            $this->mysqlClientPath($instance),
+            '-N',
+            '-B',
+            '-S', $this->socketPath($instance),
+            '-u', 'root',
+            '-e', $sql,
+        ]);
+
+        if (! $process->isSuccessful()) {
+            throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'MySQL query failed.');
+        }
+
+        return $process->getOutput();
+    }
+
+    private function assertSafeDatabaseName(string $database): string
+    {
+        if ($database === '' || preg_match('/^[A-Za-z0-9_]+$/', $database) !== 1) {
+            throw new RuntimeException("Invalid database name [{$database}].");
+        }
+
+        return $database;
     }
 
     private function mysqlClientPath(Instance $instance): string

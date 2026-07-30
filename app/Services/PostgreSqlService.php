@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Contracts\ManagesNamedDatabases;
 use App\Support\BinaryDownloader;
 use App\Support\Instance;
 use App\Support\ProcessManager;
@@ -10,7 +11,7 @@ use App\Support\StackdPaths;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 
-class PostgreSqlService extends AbstractService
+class PostgreSqlService extends AbstractService implements ManagesNamedDatabases
 {
     public function __construct(
         StackdPaths $paths,
@@ -119,6 +120,56 @@ class PostgreSqlService extends AbstractService
         return array_merge(parent::statusDetails($instance), [
             'database' => (string) $instance->option('database', 'laravel'),
         ]);
+    }
+
+    public function databaseExists(Instance $instance, string $database): bool
+    {
+        $database = $this->assertSafeDatabaseName($database);
+        $username = (string) $instance->option('username', 'laravel');
+
+        $process = $this->processes->run([
+            $this->binPath($instance, 'psql'),
+            '-h', $this->bindAddress(),
+            '-p', (string) $instance->port,
+            '-U', $username,
+            '-d', 'postgres',
+            '-tAc',
+            "SELECT 1 FROM pg_database WHERE datname = '{$database}'",
+        ]);
+
+        if (! $process->isSuccessful()) {
+            throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'PostgreSQL query failed.');
+        }
+
+        return trim($process->getOutput()) === '1';
+    }
+
+    public function createDatabase(Instance $instance, string $database): void
+    {
+        $database = $this->assertSafeDatabaseName($database);
+        $username = (string) $instance->option('username', 'laravel');
+
+        $process = new Process([
+            $this->binPath($instance, 'createdb'),
+            '-h', $this->bindAddress(),
+            '-p', (string) $instance->port,
+            '-U', $username,
+            $database,
+        ]);
+        $process->run();
+
+        if (! $process->isSuccessful() && ! str_contains($process->getErrorOutput(), 'already exists')) {
+            throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'Failed to create database.');
+        }
+    }
+
+    private function assertSafeDatabaseName(string $database): string
+    {
+        if ($database === '' || preg_match('/^[A-Za-z0-9_]+$/', $database) !== 1) {
+            throw new RuntimeException("Invalid database name [{$database}].");
+        }
+
+        return $database;
     }
 
     private function initializeDataDirectory(Instance $instance): void

@@ -12,7 +12,7 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 
 - **Services** — MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO
 - **Global instances** — one MySQL for all your apps, not a container per project
-- **Laravel-friendly** — `stackd env --write` overwrites your `.env` with every installed stackd service (MySQL, Mailpit, …)
+- **Laravel-friendly** — `stackd env` overwrites your `.env` for every installed service (and uses your project folder as the DB name)
 - **No Docker required** — downloads (or builds) native binaries on demand
 - **macOS native** — binds to `127.0.0.1`, optional LaunchAgent start-at-login
 - **TablePlus & browser ready** — `stackd open` launches the right client
@@ -69,8 +69,9 @@ stackd create mysql
 stackd create valkey
 stackd create mailpit
 
-# From a Laravel project root — overwrites .env for all installed stackd services
-stackd env --write
+# From a Laravel project root — writes .env for all installed stackd services
+stackd env
+stackd env --show   # print only
 
 # Open clients
 stackd open mysql      # TablePlus
@@ -94,8 +95,8 @@ stackd status
 | `stackd status` | Show all instances |
 | `stackd list` | List instances as a table |
 | `stackd delete` / `remove` / `uninstall` | Delete an instance and its data |
-| `stackd env [service] [name]` | Print Laravel `.env` lines |
-| `stackd env --write` | Overwrite `.env` keys for all installed stackd services |
+| `stackd env [service] [name]` | Write `.env` keys for installed stackd services |
+| `stackd env --show` | Print variables instead of writing |
 | `stackd open <service> [name]` | Open TablePlus or the web UI |
 | `stackd logs <service> [name]` | Tail instance logs |
 | `stackd doctor` | Diagnose install & dependencies |

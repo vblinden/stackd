@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Contracts\ManagesNamedDatabases;
 use App\Support\BinaryDownloader;
 use App\Support\Instance;
 use App\Support\ProcessManager;
@@ -12,7 +13,7 @@ use Symfony\Component\Process\Process;
 
 use function Laravel\Prompts\confirm;
 
-class MariaDbService extends AbstractService
+class MariaDbService extends AbstractService implements ManagesNamedDatabases
 {
     public function __construct(
         StackdPaths $paths,
@@ -161,6 +162,23 @@ class MariaDbService extends AbstractService
         file_put_contents($marker, (new \DateTimeImmutable)->format(\DateTimeInterface::ATOM));
     }
 
+    public function databaseExists(Instance $instance, string $database): bool
+    {
+        $database = $this->assertSafeDatabaseName($database);
+        $output = $this->querySql(
+            $instance,
+            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{$database}'",
+        );
+
+        return trim($output) !== '';
+    }
+
+    public function createDatabase(Instance $instance, string $database): void
+    {
+        $database = $this->assertSafeDatabaseName($database);
+        $this->runSql($instance, "CREATE DATABASE IF NOT EXISTS `{$database}`");
+    }
+
     private function waitUntilReady(Instance $instance, int $timeout = 45): void
     {
         $socket = $this->socketPath($instance);
@@ -195,6 +213,33 @@ class MariaDbService extends AbstractService
             '-u', 'root',
             '-e', $sql,
         ]);
+    }
+
+    private function querySql(Instance $instance, string $sql): string
+    {
+        $process = $this->processes->run([
+            $this->clientBinary(),
+            '-N',
+            '-B',
+            '-S', $this->socketPath($instance),
+            '-u', 'root',
+            '-e', $sql,
+        ]);
+
+        if (! $process->isSuccessful()) {
+            throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'MariaDB query failed.');
+        }
+
+        return $process->getOutput();
+    }
+
+    private function assertSafeDatabaseName(string $database): string
+    {
+        if ($database === '' || preg_match('/^[A-Za-z0-9_]+$/', $database) !== 1) {
+            throw new RuntimeException("Invalid database name [{$database}].");
+        }
+
+        return $database;
     }
 
     private function buildConfig(Instance $instance, string $dataDir, string $socket): string
