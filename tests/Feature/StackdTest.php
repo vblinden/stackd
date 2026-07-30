@@ -232,9 +232,58 @@ it('reserves ports globally, including service companion ports', function () {
         ->and($repository->isPortAvailable(80))->toBeFalse();
 });
 
-it('treats legacy PID-only files as stale instead of trusting them', function () {
+it('cleans up stale PID files when process does not exist or command mismatches', function () {
     $pidFile = sys_get_temp_dir().'/stackd-pid-'.uniqid();
-    file_put_contents($pidFile, (string) getmypid());
+    file_put_contents($pidFile, '9999999');
+
+    $processes = new ProcessManager;
+
+    expect($processes->isRunning($pidFile))->toBeFalse()
+        ->and(file_exists($pidFile))->toBeFalse();
+
+    file_put_contents($pidFile, json_encode([
+        'pid' => getmypid(),
+        'command' => 'non_existent_binary_name_12345',
+    ]));
+
+    expect($processes->isRunning($pidFile))->toBeFalse()
+        ->and(file_exists($pidFile))->toBeFalse();
+});
+
+it('recognizes plain integer PID files for running processes without killing on stop', function () {
+    $pidFile = sys_get_temp_dir().'/stackd-pid-'.uniqid();
+    $selfPid = getmypid();
+    file_put_contents($pidFile, (string) $selfPid);
+
+    $processes = new ProcessManager;
+
+    expect($processes->isRunning($pidFile))->toBeTrue()
+        ->and(file_exists($pidFile))->toBeTrue();
+
+    $processes->stop($pidFile);
+
+    expect(file_exists($pidFile))->toBeFalse()
+        ->and(posix_kill($selfPid, 0))->toBeTrue();
+});
+
+it('does not kill processes for JSON PID files missing a command', function () {
+    $pidFile = sys_get_temp_dir().'/stackd-pid-'.uniqid();
+    $selfPid = getmypid();
+    file_put_contents($pidFile, json_encode(['pid' => $selfPid]));
+
+    $processes = new ProcessManager;
+
+    expect($processes->isRunning($pidFile))->toBeTrue();
+
+    $processes->stop($pidFile);
+
+    expect(file_exists($pidFile))->toBeFalse()
+        ->and(posix_kill($selfPid, 0))->toBeTrue();
+});
+
+it('rejects non-decimal legacy PID file contents', function () {
+    $pidFile = sys_get_temp_dir().'/stackd-pid-'.uniqid();
+    file_put_contents($pidFile, '1e2');
 
     $processes = new ProcessManager;
 

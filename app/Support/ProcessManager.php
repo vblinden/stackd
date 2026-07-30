@@ -13,17 +13,27 @@ class ProcessManager
         $pid = $metadata['pid'] ?? null;
 
         if ($pid === null) {
-            if (file_exists($pidFile)) {
-                @unlink($pidFile);
-            }
+            $this->forgetPidFile($pidFile);
 
             return false;
         }
 
-        if (! $this->pidExists($pid) || ! $this->processMatches($pid, $metadata['command'] ?? null)) {
-            if (file_exists($pidFile)) {
-                @unlink($pidFile);
-            }
+        if (! $this->pidExists($pid)) {
+            $this->forgetPidFile($pidFile);
+
+            return false;
+        }
+
+        $command = $metadata['command'];
+
+        // Legacy / command-less metadata cannot prove ownership after PID reuse.
+        // Treat a live PID as running for status/start-guard only; stop() will not signal.
+        if ($command === null || $command === '') {
+            return true;
+        }
+
+        if (! $this->processMatches($pid, $command)) {
+            $this->forgetPidFile($pidFile);
 
             return false;
         }
@@ -36,7 +46,7 @@ class ProcessManager
         return $this->readMetadata($pidFile)['pid'] ?? null;
     }
 
-    /** @return array{pid: int, command?: string}|null */
+    /** @return array{pid: int, command: string|null}|null */
     private function readMetadata(string $pidFile): ?array
     {
         if (! file_exists($pidFile)) {
@@ -44,13 +54,34 @@ class ProcessManager
         }
 
         $contents = trim((string) file_get_contents($pidFile));
-        $data = json_decode($contents, true);
 
-        if (is_array($data) && is_int($data['pid'] ?? null) && is_string($data['command'] ?? null) && $data['pid'] > 0) {
-            return ['pid' => $data['pid'], 'command' => $data['command']];
+        if ($contents === '') {
+            return null;
         }
 
-        // Old PID-only files cannot prove ownership after PID reuse. Treat them as stale.
+        $data = json_decode($contents, true);
+
+        if (is_array($data) && is_int($data['pid'] ?? null) && $data['pid'] > 0) {
+            $command = $data['command'] ?? null;
+
+            return [
+                'pid' => $data['pid'],
+                'command' => is_string($command) && $command !== '' ? $command : null,
+            ];
+        }
+
+        // Strict decimal integer only (reject 1e2, 12.5, 0x10, etc.).
+        if (preg_match('/^\d+$/', $contents) === 1) {
+            $pid = (int) $contents;
+
+            if ($pid > 0) {
+                return [
+                    'pid' => $pid,
+                    'command' => null,
+                ];
+            }
+        }
+
         return null;
     }
 
@@ -120,26 +151,34 @@ class ProcessManager
         $pid = $metadata['pid'] ?? null;
 
         if ($pid === null) {
+            $this->forgetPidFile($pidFile);
+
             return;
         }
 
-        if ($this->pidExists($pid) && $this->processMatches($pid, $metadata['command'] ?? null)) {
+        $command = $metadata['command'];
+
+        // Never signal without a stored command: legacy PID-only files cannot prove ownership.
+        if (
+            $command !== null
+            && $command !== ''
+            && $this->pidExists($pid)
+            && $this->processMatches($pid, $command)
+        ) {
             posix_kill($pid, $signal);
 
             $deadline = microtime(true) + 10;
 
-            while (microtime(true) < $deadline && $this->pidExists($pid) && $this->processMatches($pid, $metadata['command'])) {
+            while (microtime(true) < $deadline && $this->pidExists($pid) && $this->processMatches($pid, $command)) {
                 usleep(100_000);
             }
 
-            if ($this->pidExists($pid) && $this->processMatches($pid, $metadata['command'])) {
+            if ($this->pidExists($pid) && $this->processMatches($pid, $command)) {
                 posix_kill($pid, 9);
             }
         }
 
-        if (file_exists($pidFile)) {
-            unlink($pidFile);
-        }
+        $this->forgetPidFile($pidFile);
     }
 
     public function run(array $command, ?string $cwd = null, int $timeout = 300, ?string $logFile = null): Process
@@ -267,9 +306,9 @@ class ProcessManager
         return posix_kill($pid, 0);
     }
 
-    private function processMatches(int $pid, ?string $expectedCommand): bool
+    private function processMatches(int $pid, string $expectedCommand): bool
     {
-        if ($expectedCommand === null || $expectedCommand === '') {
+        if ($expectedCommand === '') {
             return false;
         }
 
@@ -282,5 +321,12 @@ class ProcessManager
         }
 
         return str_contains(trim($process->getOutput()), $expectedCommand);
+    }
+
+    private function forgetPidFile(string $pidFile): void
+    {
+        if (file_exists($pidFile)) {
+            @unlink($pidFile);
+        }
     }
 }
