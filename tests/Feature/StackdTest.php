@@ -3,6 +3,7 @@
 use App\Services\MailpitService;
 use App\Services\MySqlService;
 use App\Services\PostgreSqlService;
+use App\Support\BinaryDownloader;
 use App\Support\CredentialFormatter;
 use App\Support\DockerEngine;
 use App\Support\DockerSpec;
@@ -517,6 +518,28 @@ it('shows and sets the runtime command', function () {
     $this->artisan('runtime', ['choice' => 'docker'])->assertSuccessful();
 
     expect(app(StackdConfig::class)->runtime())->toBe('docker');
+});
+
+it('uses docker exec instead of a host socket for docker mysql clients', function () {
+    $engine = new DockerEngine(new ProcessManager, 'docker');
+    $service = new MySqlService(
+        new StackdPaths(sys_get_temp_dir()),
+        new ProcessManager,
+        app(BinaryDownloader::class),
+        $engine,
+        app(ServiceOpener::class),
+    );
+    $instance = new Instance(service: 'mysql', name: 'default', port: 3307, runtime: 'docker');
+
+    expect($service->sqlClientCommand($instance, ['-e', 'SELECT 1']))->toBe([
+        'docker',
+        'exec',
+        'stackd-mysql-default',
+        'mysql',
+        '-uroot',
+        '-e',
+        'SELECT 1',
+    ])->and($service->statusDetails($instance))->not->toHaveKey('socket');
 });
 
 it('rejects creating with both --docker and --native', function () {

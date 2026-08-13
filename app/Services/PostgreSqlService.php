@@ -156,17 +156,10 @@ class PostgreSqlService extends AbstractService implements ManagesNamedDatabases
     public function databaseExists(Instance $instance, string $database): bool
     {
         $database = $this->assertSafeDatabaseName($database);
-        $username = (string) $instance->option('username', 'laravel');
-
-        $process = $this->processes->run([
-            $this->binPath($instance, 'psql'),
-            '-h', $this->bindAddress(),
-            '-p', (string) $instance->port,
-            '-U', $username,
-            '-d', 'postgres',
+        $process = $this->processes->run($this->psqlCommand($instance, [
             '-tAc',
             "SELECT 1 FROM pg_database WHERE datname = '{$database}'",
-        ]);
+        ]));
 
         if (! $process->isSuccessful()) {
             throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'PostgreSQL query failed.');
@@ -180,6 +173,16 @@ class PostgreSqlService extends AbstractService implements ManagesNamedDatabases
         $database = $this->assertSafeDatabaseName($database);
         $username = (string) $instance->option('username', 'laravel');
 
+        if ($instance->isDocker()) {
+            $process = $this->processes->run($this->dockerExec($instance, ['createdb', '-U', $username, $database]));
+
+            if (! $process->isSuccessful() && ! str_contains($process->getErrorOutput(), 'already exists')) {
+                throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'Failed to create database.');
+            }
+
+            return;
+        }
+
         $process = new Process([
             $this->binPath($instance, 'createdb'),
             '-h', $this->bindAddress(),
@@ -192,6 +195,44 @@ class PostgreSqlService extends AbstractService implements ManagesNamedDatabases
         if (! $process->isSuccessful() && ! str_contains($process->getErrorOutput(), 'already exists')) {
             throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'Failed to create database.');
         }
+    }
+
+    /**
+     * @param  list<string>  $args
+     * @return list<string>
+     */
+    public function psqlCommand(Instance $instance, array $args = []): array
+    {
+        $username = (string) $instance->option('username', 'laravel');
+
+        if ($instance->isDocker()) {
+            return $this->dockerExec($instance, array_merge([
+                'psql',
+                '-U', $username,
+                '-d', 'postgres',
+            ], $args));
+        }
+
+        return array_merge([
+            $this->binPath($instance, 'psql'),
+            '-h', $this->bindAddress(),
+            '-p', (string) $instance->port,
+            '-U', $username,
+            '-d', 'postgres',
+        ], $args);
+    }
+
+    /**
+     * @param  list<string>  $command
+     * @return list<string>
+     */
+    private function dockerExec(Instance $instance, array $command): array
+    {
+        return array_merge([
+            $this->docker->binary(),
+            'exec',
+            $this->docker->containerName($instance),
+        ], $command);
     }
 
     private function assertSafeDatabaseName(string $database): string

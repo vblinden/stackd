@@ -147,11 +147,16 @@ class MySqlService extends AbstractService implements ManagesNamedDatabases
 
     public function statusDetails(Instance $instance): array
     {
-        return array_merge(parent::statusDetails($instance), [
-            'socket' => $this->socketPath($instance),
+        $details = [
             'database' => (string) $instance->option('database', 'laravel'),
             'version' => $this->resolveVersionKey($instance),
-        ]);
+        ];
+
+        if (! $instance->isDocker()) {
+            $details['socket'] = $this->socketPath($instance);
+        }
+
+        return array_merge(parent::statusDetails($instance), $details);
     }
 
     private function initializeDataDirectory(Instance $instance): void
@@ -212,19 +217,43 @@ class MySqlService extends AbstractService implements ManagesNamedDatabases
         $this->runSql($instance, "CREATE DATABASE IF NOT EXISTS `{$database}`");
     }
 
+    /**
+     * @param  list<string>  $args
+     * @return list<string>
+     */
+    public function sqlClientCommand(Instance $instance, array $args = []): array
+    {
+        if ($instance->isDocker()) {
+            return array_merge([
+                $this->docker->binary(),
+                'exec',
+                $this->docker->containerName($instance),
+                'mysql',
+                '-uroot',
+            ], $args);
+        }
+
+        return array_merge([
+            $this->mysqlClientPath($instance),
+            '-S', $this->socketPath($instance),
+            '-u', 'root',
+        ], $args);
+    }
+
     private function waitUntilReady(Instance $instance, int $timeout = 30): void
     {
+        if ($instance->isDocker()) {
+            $this->docker->waitUntilReady($instance, $timeout);
+
+            return;
+        }
+
         $socket = $this->socketPath($instance);
         $deadline = time() + $timeout;
 
         while (time() < $deadline) {
             if (file_exists($socket)) {
-                $process = new Process([
-                    $this->mysqlClientPath($instance),
-                    '-S', $socket,
-                    '-u', 'root',
-                    '-e', 'SELECT 1',
-                ]);
+                $process = new Process($this->sqlClientCommand($instance, ['-e', 'SELECT 1']));
                 $process->run();
 
                 if ($process->isSuccessful()) {
@@ -240,24 +269,12 @@ class MySqlService extends AbstractService implements ManagesNamedDatabases
 
     private function runSql(Instance $instance, string $sql): void
     {
-        $this->processes->runOrFail([
-            $this->mysqlClientPath($instance),
-            '-S', $this->socketPath($instance),
-            '-u', 'root',
-            '-e', $sql,
-        ]);
+        $this->processes->runOrFail($this->sqlClientCommand($instance, ['-e', $sql]));
     }
 
     private function querySql(Instance $instance, string $sql): string
     {
-        $process = $this->processes->run([
-            $this->mysqlClientPath($instance),
-            '-N',
-            '-B',
-            '-S', $this->socketPath($instance),
-            '-u', 'root',
-            '-e', $sql,
-        ]);
+        $process = $this->processes->run($this->sqlClientCommand($instance, ['-N', '-B', '-e', $sql]));
 
         if (! $process->isSuccessful()) {
             throw new RuntimeException(trim($process->getErrorOutput() ?: $process->getOutput()) ?: 'MySQL query failed.');

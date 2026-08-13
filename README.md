@@ -114,7 +114,7 @@ Existing instances keep the runtime they were created with. Status, list, and th
 | Meilisearch | `getmeili/meilisearch:v1.51` |
 | MinIO | `minio/minio` |
 
-Docker instances still bind `127.0.0.1`, use the same ports and credentials, and store data under `~/.stackd/instances/…`. `stackd start`, `stop`, `logs`, `env`, `open`, and `delete` work the same way. Autostart uses `--restart unless-stopped` so containers come back when Docker Desktop starts.
+Docker instances still bind `127.0.0.1`, use the same ports and credentials, and store data under `~/.stackd/instances/…`. There is no host Unix socket — connect with `127.0.0.1` and the instance port (`mysql -h 127.0.0.1 -P 3306 -u root`). `stackd start`, `stop`, `logs`, `env`, `open`, and `delete` work the same way. Autostart uses `--restart unless-stopped` so containers come back when Docker Desktop starts.
 
 Native data directories are not migrated into Docker (on-disk layouts differ). Create a new docker instance, or keep the native one. Docker Desktop must be running for docker creates and starts.
 
@@ -165,7 +165,7 @@ Services are tuned for local macOS use: smaller memory footprints, less aggressi
 
 ```bash
 composer install
-php stackd app:build stackd --build-version=v1.1.0
+php stackd app:build stackd --build-version=v1.1.1
 php builds/stackd --version
 ```
 
