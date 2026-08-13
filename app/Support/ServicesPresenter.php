@@ -7,7 +7,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 class ServicesPresenter
 {
     /**
-     * @param  array<int, array{service: string, name: string, running: bool, address: string, pid: string|null, credentials?: array<string, string>}>  $services
+     * @param  array<int, array{service: string, name: string, running: bool, address: string, pid: string|null, credentials?: array<string, string>, runtime?: string}>  $services
      */
     public function render(OutputInterface $output, array $services, bool $runningOnly = false): void
     {
@@ -45,14 +45,17 @@ class ServicesPresenter
             $servicePad = str_repeat(' ', max(0, $serviceWidth - mb_strlen($service['service'])));
             $namePad = str_repeat(' ', max(0, $nameWidth - mb_strlen($service['name'])));
 
+            $runtime = $service['runtime'] ?? 'native';
+
             $line = sprintf(
-                '  %s <fg=white;options=bold>%s</>%s  <fg=gray>%s</>%s  <fg=cyan>%s</>',
+                '  %s <fg=white;options=bold>%s</>%s  <fg=gray>%s</>%s  <fg=cyan>%s</>  <fg=gray>%s</>',
                 $dot,
                 $service['service'],
                 $servicePad,
                 $service['name'],
                 $namePad,
                 $service['address'],
+                $runtime,
             );
 
             $credentialsSummary = CredentialFormatter::summary($service['credentials'] ?? []);

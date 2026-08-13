@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
+use App\Support\DockerSpec;
 use App\Support\Instance;
 use App\Support\ProcessManager;
 use App\Support\ServiceOpener;
@@ -15,9 +17,10 @@ class MailpitService extends AbstractService
         StackdPaths $paths,
         ProcessManager $processes,
         BinaryDownloader $binaries,
+        DockerEngine $docker,
         private readonly ServiceOpener $opener,
     ) {
-        parent::__construct($paths, $processes, $binaries);
+        parent::__construct($paths, $processes, $binaries, $docker);
     }
 
     public static function type(): string
@@ -33,6 +36,28 @@ class MailpitService extends AbstractService
     public function defaultPort(): int
     {
         return 1025;
+    }
+
+    public function dockerSpec(Instance $instance): DockerSpec
+    {
+        $webPort = (int) $instance->option('web_port', $instance->port + 7000);
+
+        return new DockerSpec(
+            image: 'axllent/mailpit',
+            ports: [
+                $instance->port => 1025,
+                $webPort => 8025,
+            ],
+            volumes: [
+                $this->paths->dataDir($instance->service, $instance->name) => '/data',
+            ],
+            command: [
+                '--smtp', '0.0.0.0:1025',
+                '--listen', '0.0.0.0:8025',
+                '--database', '/data/mailpit.db',
+                '--max', '500',
+            ],
+        );
     }
 
     protected function provision(Instance $instance): void

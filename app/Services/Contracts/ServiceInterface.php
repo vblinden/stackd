@@ -2,6 +2,7 @@
 
 namespace App\Services\Contracts;
 
+use App\Support\DockerSpec;
 use App\Support\Instance;
 
 interface ServiceInterface
@@ -17,6 +18,8 @@ interface ServiceInterface
     public function availableVersions(): array;
 
     public function create(Instance $instance): void;
+
+    public function dockerSpec(Instance $instance): DockerSpec;
 
     public function start(Instance $instance): void;
 

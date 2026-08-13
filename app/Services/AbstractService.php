@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Services\Contracts\ServiceInterface;
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
 use App\Support\Instance;
 use App\Support\ProcessManager;
 use App\Support\StackdPaths;
@@ -14,6 +15,7 @@ abstract class AbstractService implements ServiceInterface
         protected readonly StackdPaths $paths,
         protected readonly ProcessManager $processes,
         protected readonly BinaryDownloader $binaries,
+        protected readonly DockerEngine $docker,
     ) {}
 
     public function defaultName(): string
@@ -34,6 +36,10 @@ abstract class AbstractService implements ServiceInterface
 
     public function isRunning(Instance $instance): bool
     {
+        if ($instance->isDocker()) {
+            return $this->docker->isRunning($instance);
+        }
+
         return $this->processes->isRunning($this->paths->pidFile($instance->service, $instance->name));
     }
 
@@ -69,14 +75,21 @@ abstract class AbstractService implements ServiceInterface
 
     public function statusDetails(Instance $instance): array
     {
-        $pid = $this->processes->readPid($this->paths->pidFile($instance->service, $instance->name));
-
-        return [
+        $details = [
             'running' => $this->isRunning($instance),
-            'pid' => $pid,
+            'pid' => $instance->isDocker()
+                ? null
+                : $this->processes->readPid($this->paths->pidFile($instance->service, $instance->name)),
             'port' => $instance->port,
             'bind' => config('stackd.bind_address'),
+            'runtime' => $instance->runtime,
         ];
+
+        if ($instance->isDocker()) {
+            $details['container'] = $this->docker->containerName($instance);
+        }
+
+        return $details;
     }
 
     protected function bindAddress(): string

@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
+use App\Support\DockerSpec;
 use App\Support\Instance;
 use App\Support\ProcessManager;
 use App\Support\StackdPaths;
@@ -14,8 +16,9 @@ class MeilisearchService extends AbstractService
         StackdPaths $paths,
         ProcessManager $processes,
         BinaryDownloader $binaries,
+        DockerEngine $docker,
     ) {
-        parent::__construct($paths, $processes, $binaries);
+        parent::__construct($paths, $processes, $binaries, $docker);
     }
 
     public static function type(): string
@@ -31,6 +34,24 @@ class MeilisearchService extends AbstractService
     public function defaultPort(): int
     {
         return 7700;
+    }
+
+    public function dockerSpec(Instance $instance): DockerSpec
+    {
+        $masterKey = (string) $instance->option('master_key', '');
+
+        return new DockerSpec(
+            image: 'getmeili/meilisearch:v1.51',
+            ports: [$instance->port => 7700],
+            env: array_filter([
+                'MEILI_ENV' => 'development',
+                'MEILI_NO_ANALYTICS' => 'true',
+                'MEILI_MASTER_KEY' => $masterKey !== '' ? $masterKey : null,
+            ]),
+            volumes: [
+                $this->paths->dataDir($instance->service, $instance->name) => '/meili_data',
+            ],
+        );
     }
 
     protected function provision(Instance $instance): void

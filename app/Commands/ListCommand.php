@@ -29,12 +29,13 @@ class ListCommand extends Command
                 $instance->id(),
                 (string) $instance->port,
                 $instance->version ?? 'latest',
+                $instance->runtime,
                 $manager->isRunning($instance) ? 'running' : 'stopped',
                 $instance->createdAt ?? '-',
             ];
         }
 
-        $this->table(['Instance', 'Port', 'Version', 'State', 'Created'], $rows);
+        $this->table(['Instance', 'Port', 'Version', 'Runtime', 'State', 'Created'], $rows);
 
         return self::SUCCESS;
     }

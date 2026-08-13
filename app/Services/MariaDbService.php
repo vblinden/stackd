@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Services\Contracts\ManagesNamedDatabases;
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
+use App\Support\DockerSpec;
 use App\Support\Instance;
 use App\Support\ProcessManager;
 use App\Support\ServiceOpener;
@@ -19,9 +21,10 @@ class MariaDbService extends AbstractService implements ManagesNamedDatabases
         StackdPaths $paths,
         ProcessManager $processes,
         BinaryDownloader $binaries,
+        DockerEngine $docker,
         private readonly ServiceOpener $opener,
     ) {
-        parent::__construct($paths, $processes, $binaries);
+        parent::__construct($paths, $processes, $binaries, $docker);
     }
 
     public static function type(): string
@@ -42,6 +45,23 @@ class MariaDbService extends AbstractService implements ManagesNamedDatabases
     public function availableVersions(): array
     {
         return ['11.4', 'latest'];
+    }
+
+    public function dockerSpec(Instance $instance): DockerSpec
+    {
+        $tag = $instance->version && $instance->version !== 'latest' ? $instance->version : '11.4';
+
+        return new DockerSpec(
+            image: 'mariadb:'.$tag,
+            ports: [$instance->port => 3306],
+            env: [
+                'MARIADB_ALLOW_EMPTY_ROOT_PASSWORD' => '1',
+                'MARIADB_DATABASE' => (string) $instance->option('database', 'laravel'),
+            ],
+            volumes: [
+                $this->paths->dataDir($instance->service, $instance->name) => '/var/lib/mysql',
+            ],
+        );
     }
 
     protected function provision(Instance $instance): void

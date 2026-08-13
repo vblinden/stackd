@@ -32,6 +32,7 @@ class StatusCommand extends Command
                 'address' => config('stackd.bind_address').':'.$instance->port,
                 'pid' => $status['pid'] ? (string) $status['pid'] : null,
                 'credentials' => $registry->get($instance->service)->credentials($instance),
+                'runtime' => $instance->runtime,
             ];
         }
 

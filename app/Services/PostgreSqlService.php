@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Services\Contracts\ManagesNamedDatabases;
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
+use App\Support\DockerSpec;
 use App\Support\Instance;
 use App\Support\ProcessManager;
 use App\Support\ServiceOpener;
@@ -17,9 +19,10 @@ class PostgreSqlService extends AbstractService implements ManagesNamedDatabases
         StackdPaths $paths,
         ProcessManager $processes,
         BinaryDownloader $binaries,
+        DockerEngine $docker,
         private readonly ServiceOpener $opener,
     ) {
-        parent::__construct($paths, $processes, $binaries);
+        parent::__construct($paths, $processes, $binaries, $docker);
     }
 
     public static function type(): string
@@ -40,6 +43,25 @@ class PostgreSqlService extends AbstractService implements ManagesNamedDatabases
     public function availableVersions(): array
     {
         return ['18', 'latest'];
+    }
+
+    public function dockerSpec(Instance $instance): DockerSpec
+    {
+        $tag = $instance->version && $instance->version !== 'latest' ? $instance->version : '18';
+
+        return new DockerSpec(
+            image: 'postgres:'.$tag,
+            ports: [$instance->port => 5432],
+            env: [
+                'POSTGRES_USER' => (string) $instance->option('username', 'laravel'),
+                'POSTGRES_PASSWORD' => (string) $instance->option('password', ''),
+                'POSTGRES_DB' => (string) $instance->option('database', 'laravel'),
+                'POSTGRES_HOST_AUTH_METHOD' => 'trust',
+            ],
+            volumes: [
+                $this->paths->dataDir($instance->service, $instance->name) => '/var/lib/postgresql/data',
+            ],
+        );
     }
 
     protected function provision(Instance $instance): void

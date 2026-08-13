@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Services\Contracts\ManagesNamedDatabases;
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
+use App\Support\DockerSpec;
 use App\Support\Instance;
 use App\Support\ProcessManager;
 use App\Support\ServiceOpener;
@@ -17,9 +19,10 @@ class MySqlService extends AbstractService implements ManagesNamedDatabases
         StackdPaths $paths,
         ProcessManager $processes,
         BinaryDownloader $binaries,
+        DockerEngine $docker,
         private readonly ServiceOpener $opener,
     ) {
-        parent::__construct($paths, $processes, $binaries);
+        parent::__construct($paths, $processes, $binaries, $docker);
     }
 
     public static function type(): string
@@ -40,6 +43,27 @@ class MySqlService extends AbstractService implements ManagesNamedDatabases
     public function availableVersions(): array
     {
         return ['8.4', '8.0', 'latest'];
+    }
+
+    public function dockerSpec(Instance $instance): DockerSpec
+    {
+        $tag = $this->resolveVersionKey($instance);
+
+        if ($tag === 'latest') {
+            $tag = '8.4';
+        }
+
+        return new DockerSpec(
+            image: 'mysql:'.$tag,
+            ports: [$instance->port => 3306],
+            env: [
+                'MYSQL_ALLOW_EMPTY_PASSWORD' => 'yes',
+                'MYSQL_DATABASE' => (string) $instance->option('database', 'laravel'),
+            ],
+            volumes: [
+                $this->paths->dataDir($instance->service, $instance->name) => '/var/lib/mysql',
+            ],
+        );
     }
 
     protected function provision(Instance $instance): void

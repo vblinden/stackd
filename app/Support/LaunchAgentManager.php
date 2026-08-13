@@ -9,6 +9,8 @@ class LaunchAgentManager
     public function __construct(
         private readonly StackdPaths $paths,
         private readonly ProcessManager $processes,
+        private readonly InstanceRepository $repository,
+        private readonly DockerEngine $docker,
     ) {}
 
     public function isEnabled(): bool
@@ -32,6 +34,15 @@ class LaunchAgentManager
 
     public function disable(): void
     {
+        foreach ($this->list() as $entry) {
+            if (! str_contains($entry, ':')) {
+                continue;
+            }
+
+            [$service, $name] = explode(':', $entry, 2);
+            $this->syncDockerRestart($service, $name, 'no');
+        }
+
         $plist = $this->paths->launchAgentPlist('com.stackd.autostart');
 
         if (file_exists($plist)) {
@@ -66,6 +77,7 @@ class LaunchAgentManager
 
         $this->writeAutostart($data);
         $this->syncLaunchAgent();
+        $this->syncDockerRestart($service, $name, 'unless-stopped');
     }
 
     public function remove(string $service, string $name): void
@@ -84,6 +96,7 @@ class LaunchAgentManager
 
         $this->writeAutostart($data);
         $this->syncLaunchAgent();
+        $this->syncDockerRestart($service, $name, 'no');
     }
 
     public function syncLaunchAgent(): void
@@ -288,5 +301,20 @@ XML;
     private function escapePlist(string $value): string
     {
         return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+    }
+
+    private function syncDockerRestart(string $service, string $name, string $policy): void
+    {
+        $instance = $this->repository->find($service, $name);
+
+        if ($instance === null || ! $instance->isDocker()) {
+            return;
+        }
+
+        try {
+            $this->docker->setRestartPolicy($instance, $policy);
+        } catch (\Throwable) {
+            // Docker Desktop may be stopped; start-at-login still goes through stackd start.
+        }
     }
 }

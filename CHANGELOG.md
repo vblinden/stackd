@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-13
+
+### Added
+
+- `stackd runtime [native|docker]` sets a default runtime for new instances. Native stays the default.
+- `--docker` / `--native` on `stackd create` override the default for one instance.
+- Docker instances pull official images, bind `127.0.0.1`, and keep data under `~/.stackd/instances/…`.
+- `stackd doctor` checks the Docker CLI and daemon when Docker is in use.
+- Status, list, and home show each instance’s runtime.
+
+Existing instances keep the runtime they were created with. Native data directories are not migrated into Docker. After upgrading, run `stackd runtime` to confirm the default, then `stackd runtime docker` if you want new instances to use images.
+
 ## [1.0.10] - 2026-08-13
 
 ### Fixed
@@ -85,6 +97,7 @@ Restart existing instances with `stackd restart <service>` to pick up the new se
 
 - First public release: named local instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO for Laravel development on macOS.
 
+[1.1.0]: https://github.com/vblinden/stackd/compare/v1.0.10...v1.1.0
 [1.0.10]: https://github.com/vblinden/stackd/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/vblinden/stackd/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/vblinden/stackd/compare/v1.0.7...v1.0.8

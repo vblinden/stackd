@@ -14,6 +14,8 @@ class Doctor
         private readonly ServiceRegistry $registry,
         private readonly BinaryDownloader $binaries,
         private readonly HomebrewConflict $homebrew,
+        private readonly StackdConfig $config,
+        private readonly DockerEngine $docker,
     ) {}
 
     /**
@@ -27,6 +29,7 @@ class Doctor
             ...$this->homebrewChecks(),
             ...$this->storageChecks(),
             ...$this->autostartChecks(),
+            ...$this->dockerChecks(),
             ...$this->endpointChecks(),
             ...$this->instanceChecks(),
             ...$this->optionalChecks(),
@@ -228,6 +231,55 @@ class Doctor
                 label: 'LaunchAgent script',
                 status: DoctorCheck::PASS,
                 message: $script,
+            ),
+        ];
+    }
+
+    /**
+     * @return array<int, DoctorCheck>
+     */
+    private function dockerChecks(): array
+    {
+        $usesDocker = $this->config->runtime() === StackdConfig::RUNTIME_DOCKER;
+
+        if (! $usesDocker) {
+            foreach ($this->repository->all() as $instance) {
+                if ($instance->isDocker()) {
+                    $usesDocker = true;
+                    break;
+                }
+            }
+        }
+
+        if (! $usesDocker) {
+            return [];
+        }
+
+        if (! $this->docker->isAvailable()) {
+            return [
+                new DoctorCheck(
+                    group: 'Docker',
+                    label: 'docker CLI',
+                    status: DoctorCheck::FAIL,
+                    message: 'Not found — install Docker Desktop or run stackd runtime native',
+                ),
+            ];
+        }
+
+        return [
+            new DoctorCheck(
+                group: 'Docker',
+                label: 'docker CLI',
+                status: DoctorCheck::PASS,
+                message: $this->docker->binary(),
+            ),
+            new DoctorCheck(
+                group: 'Docker',
+                label: 'Docker daemon',
+                status: $this->docker->daemonRunning() ? DoctorCheck::PASS : DoctorCheck::FAIL,
+                message: $this->docker->daemonRunning()
+                    ? 'Reachable'
+                    : 'Not running — open Docker Desktop and try again',
             ),
         ];
     }

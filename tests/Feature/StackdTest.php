@@ -1,6 +1,11 @@
 <?php
 
+use App\Services\MailpitService;
+use App\Services\MySqlService;
+use App\Services\PostgreSqlService;
 use App\Support\CredentialFormatter;
+use App\Support\DockerEngine;
+use App\Support\DockerSpec;
 use App\Support\EnvWriter;
 use App\Support\HomebrewConflict;
 use App\Support\Instance;
@@ -11,6 +16,7 @@ use App\Support\LaunchAgentManager;
 use App\Support\ProcessManager;
 use App\Support\ProjectDatabase;
 use App\Support\ServiceOpener;
+use App\Support\StackdConfig;
 use App\Support\StackdPaths;
 use Symfony\Component\Process\Process;
 
@@ -372,7 +378,12 @@ it('writes launchd autostart scripts with absolute php and stackd paths', functi
         return $process;
     });
 
-    $autostart = new LaunchAgentManager($paths, $processes);
+    $autostart = new LaunchAgentManager(
+        $paths,
+        $processes,
+        new InstanceRepository($paths),
+        new DockerEngine($processes, 'docker'),
+    );
     $autostart->add('mysql', 'default');
 
     $script = file_get_contents($home.'/autostart.sh');
@@ -406,4 +417,112 @@ it('starts listed autostart instances via autostart run', function () {
     app()->forgetInstance(InstanceManager::class);
 
     $this->artisan('autostart', ['action' => 'run'])->assertSuccessful();
+});
+
+it('defaults the runtime setting to native and can switch to docker', function () {
+    $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
+    mkdir($home, 0755, true);
+    config(['stackd.home' => $home]);
+
+    $paths = new StackdPaths($home);
+    $config = new StackdConfig($paths);
+
+    expect($config->runtime())->toBe('native');
+
+    $config->setRuntime('docker');
+
+    expect($config->runtime())->toBe('docker')
+        ->and(json_decode((string) file_get_contents($paths->config()), true)['runtime'])->toBe('docker');
+});
+
+it('treats registry entries without a runtime as native', function () {
+    $instance = Instance::fromArray([
+        'service' => 'mysql',
+        'name' => 'default',
+        'port' => 3306,
+    ]);
+
+    expect($instance->runtime)->toBe('native')
+        ->and($instance->isDocker())->toBeFalse()
+        ->and($instance->toArray()['runtime'])->toBe('native');
+});
+
+it('builds a loopback docker run command from a spec', function () {
+    $engine = new DockerEngine(new ProcessManager, 'docker');
+    $instance = new Instance(service: 'mysql', name: 'default', port: 3306, runtime: 'docker');
+    $spec = new DockerSpec(
+        image: 'mysql:8.4',
+        ports: [3306 => 3306],
+        env: ['MYSQL_ALLOW_EMPTY_PASSWORD' => 'yes'],
+        volumes: ['/tmp/stackd-mysql' => '/var/lib/mysql'],
+    );
+
+    expect($engine->containerName($instance))->toBe('stackd-mysql-default')
+        ->and($engine->buildRunCommand($instance, $spec))->toBe([
+            'docker',
+            'run',
+            '-d',
+            '--name', 'stackd-mysql-default',
+            '--label', 'com.stackd.managed=1',
+            '--label', 'com.stackd.instance=mysql:default',
+            '--restart', 'no',
+            '-p', '127.0.0.1:3306:3306',
+            '-e', 'MYSQL_ALLOW_EMPTY_PASSWORD=yes',
+            '-v', '/tmp/stackd-mysql:/var/lib/mysql',
+            'mysql:8.4',
+        ]);
+});
+
+it('describes official docker images for mysql postgres and mailpit', function () {
+    $mysql = app(MySqlService::class)->dockerSpec(new Instance(
+        service: 'mysql',
+        name: 'default',
+        port: 3306,
+        version: '8.4',
+        runtime: 'docker',
+    ));
+    $postgres = app(PostgreSqlService::class)->dockerSpec(new Instance(
+        service: 'postgresql',
+        name: 'default',
+        port: 5432,
+        runtime: 'docker',
+    ));
+    $mailpit = app(MailpitService::class)->dockerSpec(new Instance(
+        service: 'mailpit',
+        name: 'default',
+        port: 1025,
+        options: ['web_port' => 8025],
+        runtime: 'docker',
+    ));
+
+    expect($mysql->image)->toBe('mysql:8.4')
+        ->and($mysql->ports)->toBe([3306 => 3306])
+        ->and($postgres->image)->toBe('postgres:18')
+        ->and($postgres->env['POSTGRES_HOST_AUTH_METHOD'])->toBe('trust')
+        ->and($mailpit->image)->toBe('axllent/mailpit')
+        ->and($mailpit->ports)->toBe([1025 => 1025, 8025 => 8025])
+        ->and($mailpit->command)->toContain('--database');
+});
+
+it('shows and sets the runtime command', function () {
+    $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
+    mkdir($home, 0755, true);
+    config(['stackd.home' => $home]);
+
+    app()->forgetInstance(StackdPaths::class);
+    app()->instance(StackdPaths::class, new StackdPaths($home));
+    app()->forgetInstance(StackdConfig::class);
+
+    $this->artisan('runtime')->assertSuccessful();
+    $this->artisan('runtime', ['choice' => 'docker'])->assertSuccessful();
+
+    expect(app(StackdConfig::class)->runtime())->toBe('docker');
+});
+
+it('rejects creating with both --docker and --native', function () {
+    $this->artisan('create', [
+        'service' => 'mailpit',
+        '--docker' => true,
+        '--native' => true,
+    ])->assertFailed();
 });

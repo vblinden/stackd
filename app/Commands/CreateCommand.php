@@ -8,6 +8,7 @@ use App\Support\CredentialFormatter;
 use App\Support\HomebrewConflict;
 use App\Support\InstanceManager;
 use App\Support\LaunchAgentManager;
+use App\Support\StackdConfig;
 use LaravelZero\Framework\Commands\Command;
 use RuntimeException;
 
@@ -26,7 +27,9 @@ class CreateCommand extends Command
                             {service? : The service type (mysql, valkey, mailpit, ...)}
                             {--name= : Instance name}
                             {--port= : Port to bind on 127.0.0.1}
-                            {--service-version= : Service version}';
+                            {--service-version= : Service version}
+                            {--docker : Create this instance with Docker}
+                            {--native : Create this instance with a local binary}';
 
     protected $description = 'Create a service instance';
 
@@ -37,6 +40,7 @@ class CreateCommand extends Command
         ServiceRegistry $registry,
         LaunchAgentManager $autostart,
         HomebrewConflict $homebrew,
+        StackdConfig $config,
     ): int {
         try {
             if ($this->argument('service') === null) {
@@ -53,15 +57,17 @@ class CreateCommand extends Command
 
             $port = $this->option('port') !== null ? (int) $this->option('port') : null;
             $startAtLogin = $this->promptForStartAtLogin();
+            $runtime = $this->resolveRuntime($config);
 
             $instance = $manager->create(
                 serviceType: $service,
                 name: $this->option('name'),
                 port: $port,
                 version: $this->option('service-version'),
+                runtime: $runtime,
             );
 
-            info("Created and started {$instance->id()} on {$instance->port}");
+            info("Created and started {$instance->id()} ({$instance->runtime}) on {$instance->port}");
             $this->renderCredentials($registry->get($service)->credentials($instance));
 
             if ($startAtLogin) {
@@ -75,6 +81,23 @@ class CreateCommand extends Command
 
             return self::FAILURE;
         }
+    }
+
+    private function resolveRuntime(StackdConfig $config): string
+    {
+        if ($this->option('docker') && $this->option('native')) {
+            throw new RuntimeException('Use either --docker or --native, not both.');
+        }
+
+        if ($this->option('docker')) {
+            return StackdConfig::RUNTIME_DOCKER;
+        }
+
+        if ($this->option('native')) {
+            return StackdConfig::RUNTIME_NATIVE;
+        }
+
+        return $config->runtime();
     }
 
     private function promptForStartAtLogin(): bool

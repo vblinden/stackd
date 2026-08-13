@@ -55,6 +55,11 @@ class StackdPaths
         return $this->home.'/autostart.json';
     }
 
+    public function config(): string
+    {
+        return $this->home.'/config.json';
+    }
+
     public function launchAgents(): string
     {
         if ($this->launchAgents !== null) {

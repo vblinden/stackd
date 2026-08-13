@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use InvalidArgumentException;
 use JsonSerializable;
 
 class Instance implements JsonSerializable
@@ -13,8 +14,14 @@ class Instance implements JsonSerializable
         public ?string $version = null,
         public array $options = [],
         public ?string $createdAt = null,
+        public readonly string $runtime = StackdConfig::RUNTIME_NATIVE,
     ) {
         InstanceName::assertValid($this->name);
+
+        if (! in_array($this->runtime, [StackdConfig::RUNTIME_NATIVE, StackdConfig::RUNTIME_DOCKER], true)) {
+            throw new InvalidArgumentException('Instance runtime must be native or docker.');
+        }
+
         $this->createdAt ??= (new \DateTimeImmutable)->format(\DateTimeInterface::ATOM);
     }
 
@@ -27,12 +34,18 @@ class Instance implements JsonSerializable
             version: $data['version'] ?? null,
             options: $data['options'] ?? [],
             createdAt: $data['created_at'] ?? null,
+            runtime: $data['runtime'] ?? StackdConfig::RUNTIME_NATIVE,
         );
     }
 
     public function id(): string
     {
         return $this->service.':'.$this->name;
+    }
+
+    public function isDocker(): bool
+    {
+        return $this->runtime === StackdConfig::RUNTIME_DOCKER;
     }
 
     public function toArray(): array
@@ -44,6 +57,7 @@ class Instance implements JsonSerializable
             'version' => $this->version,
             'options' => $this->options,
             'created_at' => $this->createdAt,
+            'runtime' => $this->runtime,
         ];
     }
 
@@ -66,6 +80,7 @@ class Instance implements JsonSerializable
             version: $this->version,
             options: array_merge($this->options, $options),
             createdAt: $this->createdAt,
+            runtime: $this->runtime,
         );
     }
 }

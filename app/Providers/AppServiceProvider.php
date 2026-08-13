@@ -11,12 +11,14 @@ use App\Services\PostgreSqlService;
 use App\Services\ServiceRegistry;
 use App\Services\ValkeyService;
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
 use App\Support\InstallProgress;
 use App\Support\InstanceManager;
 use App\Support\InstanceRepository;
 use App\Support\LaunchAgentManager;
 use App\Support\ProcessManager;
 use App\Support\ServiceOpener;
+use App\Support\StackdConfig;
 use App\Support\StackdPaths;
 use Illuminate\Support\ServiceProvider;
 
@@ -30,6 +32,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ProcessManager::class);
         $this->app->singleton(InstallProgress::class);
         $this->app->singleton(BinaryDownloader::class);
+        $this->app->singleton(StackdConfig::class);
+        $this->app->singleton(DockerEngine::class);
         $this->app->singleton(InstanceRepository::class);
         $this->app->singleton(InstanceManager::class);
         $this->app->singleton(LaunchAgentManager::class);

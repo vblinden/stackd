@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
+use App\Support\DockerSpec;
 use App\Support\Instance;
 use App\Support\ProcessManager;
 use App\Support\StackdPaths;
@@ -14,8 +16,9 @@ class MinioService extends AbstractService
         StackdPaths $paths,
         ProcessManager $processes,
         BinaryDownloader $binaries,
+        DockerEngine $docker,
     ) {
-        parent::__construct($paths, $processes, $binaries);
+        parent::__construct($paths, $processes, $binaries, $docker);
     }
 
     public static function type(): string
@@ -31,6 +34,32 @@ class MinioService extends AbstractService
     public function defaultPort(): int
     {
         return 9000;
+    }
+
+    public function dockerSpec(Instance $instance): DockerSpec
+    {
+        $consolePort = (int) $instance->option('console_port', $instance->port + 1);
+
+        return new DockerSpec(
+            image: 'minio/minio',
+            ports: [
+                $instance->port => 9000,
+                $consolePort => 9001,
+            ],
+            env: [
+                'MINIO_ROOT_USER' => (string) $instance->option('access_key', 'stackd'),
+                'MINIO_ROOT_PASSWORD' => (string) $instance->option('secret_key', 'secretkey'),
+            ],
+            volumes: [
+                $this->paths->dataDir($instance->service, $instance->name) => '/data',
+            ],
+            command: [
+                'server',
+                '/data',
+                '--address', '0.0.0.0:9000',
+                '--console-address', '0.0.0.0:9001',
+            ],
+        );
     }
 
     protected function provision(Instance $instance): void

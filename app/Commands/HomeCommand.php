@@ -32,7 +32,7 @@ class HomeCommand extends Command
     }
 
     /**
-     * @return array<int, array{service: string, name: string, running: bool, address: string, pid: string|null, credentials: array<string, string>}>
+     * @return array<int, array{service: string, name: string, running: bool, address: string, pid: string|null, credentials: array<string, string>, runtime: string}>
      */
     private function collectServices(
         InstanceRepository $repository,
@@ -51,6 +51,7 @@ class HomeCommand extends Command
                 'address' => config('stackd.bind_address').':'.$instance->port,
                 'pid' => $status['pid'] ? (string) $status['pid'] : null,
                 'credentials' => $registry->get($instance->service)->credentials($instance),
+                'runtime' => $instance->runtime,
             ];
         }
 

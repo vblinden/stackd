@@ -13,14 +13,16 @@ class InstanceManager
         private readonly StackdPaths $paths,
         private readonly InstallProgress $progress,
         private readonly LaunchAgentManager $autostart,
+        private readonly StackdConfig $config,
+        private readonly DockerEngine $docker,
     ) {}
 
-    public function create(string $serviceType, ?string $name = null, ?int $port = null, ?string $version = null, array $options = []): Instance
+    public function create(string $serviceType, ?string $name = null, ?int $port = null, ?string $version = null, array $options = [], ?string $runtime = null): Instance
     {
-        return $this->repository->synchronized(fn () => $this->createLocked($serviceType, $name, $port, $version, $options));
+        return $this->repository->synchronized(fn () => $this->createLocked($serviceType, $name, $port, $version, $options, $runtime));
     }
 
-    private function createLocked(string $serviceType, ?string $name, ?int $port, ?string $version, array $options): Instance
+    private function createLocked(string $serviceType, ?string $name, ?int $port, ?string $version, array $options, ?string $runtime): Instance
     {
         $service = $this->registry->get($serviceType);
         $name = $name ?: $service->defaultName();
@@ -71,16 +73,28 @@ class InstanceManager
             port: $port,
             version: $version ?: ($service->availableVersions()[0] ?? 'latest'),
             options: $options,
+            runtime: $runtime ?: $this->config->runtime(),
         );
 
         try {
             $this->paths->ensureHome();
-            $service->create($instance);
-            $this->repository->save($instance);
+
+            if ($instance->isDocker()) {
+                $this->docker->assertReady();
+                $this->repository->save($instance);
+            } else {
+                $service->create($instance);
+                $this->repository->save($instance);
+            }
+
             $this->progress->starting($instance->id(), function () use ($serviceType, $name): void {
                 $this->start($serviceType, $name);
             });
         } catch (\Throwable $e) {
+            if ($instance->isDocker()) {
+                $this->docker->remove($instance);
+            }
+
             $this->repository->delete($serviceType, $name);
 
             throw $e;
@@ -95,18 +109,32 @@ class InstanceManager
             return;
         }
 
-        $this->registry->get($instance->service)->start($instance);
+        $this->start($instance->service, $instance->name);
     }
 
     public function start(string $serviceType, ?string $name = null): void
     {
         $instance = $this->resolveInstance($serviceType, $name);
+
+        if ($instance->isDocker()) {
+            $this->docker->start($instance, $this->dockerSpecFor($instance));
+
+            return;
+        }
+
         $this->registry->get($serviceType)->start($instance);
     }
 
     public function stop(string $serviceType, ?string $name = null): void
     {
         $instance = $this->resolveInstance($serviceType, $name);
+
+        if ($instance->isDocker()) {
+            $this->docker->stop($instance);
+
+            return;
+        }
+
         $this->registry->get($serviceType)->stop($instance);
     }
 
@@ -124,7 +152,7 @@ class InstanceManager
                 continue;
             }
 
-            $this->registry->get($instance->service)->start($instance);
+            $this->start($instance->service, $instance->name);
             $started[] = $instance;
         }
 
@@ -141,7 +169,7 @@ class InstanceManager
         $stopped = [];
 
         foreach ($this->repository->all() as $instance) {
-            $this->registry->get($instance->service)->stop($instance);
+            $this->stop($instance->service, $instance->name);
             $stopped[] = $instance;
         }
 
@@ -151,22 +179,24 @@ class InstanceManager
     public function restart(string $serviceType, ?string $name = null): void
     {
         $instance = $this->resolveInstance($serviceType, $name);
-        $service = $this->registry->get($serviceType);
 
-        if ($service->isRunning($instance)) {
-            $service->stop($instance);
+        if ($this->isRunning($instance)) {
+            $this->stop($serviceType, $instance->name);
         }
 
-        $service->start($instance);
+        $this->start($serviceType, $instance->name);
     }
 
     public function delete(string $serviceType, ?string $name = null): void
     {
         $instance = $this->resolveInstance($serviceType, $name);
-        $service = $this->registry->get($serviceType);
 
-        if ($service->isRunning($instance)) {
-            $service->stop($instance);
+        if ($this->isRunning($instance)) {
+            $this->stop($serviceType, $instance->name);
+        }
+
+        if ($instance->isDocker()) {
+            $this->docker->remove($instance);
         }
 
         $this->repository->delete($serviceType, $instance->name);
@@ -218,6 +248,17 @@ class InstanceManager
     public function statusFor(Instance $instance): array
     {
         return $this->registry->get($instance->service)->statusDetails($instance);
+    }
+
+    public function dockerSpecFor(Instance $instance): DockerSpec
+    {
+        $spec = $this->registry->get($instance->service)->dockerSpec($instance);
+
+        if (in_array($instance->id(), $this->autostart->list(), true)) {
+            return $spec->withRestart('unless-stopped');
+        }
+
+        return $spec;
     }
 
     private function nextAvailablePort(string $serviceType): int

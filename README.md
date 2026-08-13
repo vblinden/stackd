@@ -2,11 +2,12 @@
 
 **Local database and service manager for macOS.**
 
-Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO — then connect any Laravel project to them. Built to sit alongside [Laravel Valet](https://laravel.com/docs/valet) without Docker.
+Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO — then connect any Laravel project to them. Built to sit alongside [Laravel Valet](https://laravel.com/docs/valet). Native binaries by default; official Docker images if you want them.
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%E2%80%938.5-777BB4?style=flat-square)](https://www.php.net/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square)](#requirements)
+[![Latest](https://img.shields.io/github/v/release/vblinden/stackd?style=flat-square)](https://github.com/vblinden/stackd/releases)
 
 ## Why stackd?
 
@@ -14,6 +15,7 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 - **Global instances** — one MySQL for all your apps, not a container per project
 - **Laravel-friendly** — `stackd env` overwrites your `.env` for every installed service (and uses your project folder as the DB name)
 - **No Docker required** — downloads (or builds) native binaries on demand
+- **Optional Docker** — `stackd runtime docker` runs new instances from official images instead
 - **macOS native** — binds to `127.0.0.1`, optional LaunchAgent start-at-login
 - **TablePlus & browser ready** — `stackd open` launches the right client
 
@@ -21,8 +23,9 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 
 - macOS
 - PHP 8.2–8.5
-- [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/) (Valkey / MariaDB compile)
+- [Xcode Command Line Tools](https://developer.apple.com/xcode/resources/) (Valkey / MariaDB compile, native runtime only)
 - `cmake` and OpenSSL for MariaDB (stackd can install these via Homebrew when prompted)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) only if you switch the runtime to Docker
 - Avoid Homebrew MySQL/Postgres/Redis on the same ports — `stackd create` detects them and can uninstall
 
 ## Installation
@@ -85,6 +88,36 @@ stackd status
 
 `create` starts the instance immediately and can optionally add it to start-at-login.
 
+## Runtime (native or Docker)
+
+Native binaries are the default. Set the default for **new** instances once:
+
+```bash
+stackd runtime              # show: native
+stackd runtime docker       # new creates use official images
+stackd runtime native       # switch back
+
+stackd create mysql         # uses the current default
+stackd create mysql --docker
+stackd create valkey --native
+```
+
+Existing instances keep the runtime they were created with. Status, list, and the home screen show `native` or `docker` on each instance.
+
+| Service | Docker image |
+|---------|----------------|
+| MySQL | `mysql:8.4` / `mysql:8.0` |
+| MariaDB | `mariadb:11.4` |
+| PostgreSQL | `postgres:18` |
+| Valkey | `valkey/valkey:8` |
+| Mailpit | `axllent/mailpit` |
+| Meilisearch | `getmeili/meilisearch:v1.51` |
+| MinIO | `minio/minio` |
+
+Docker instances still bind `127.0.0.1`, use the same ports and credentials, and store data under `~/.stackd/instances/…`. `stackd start`, `stop`, `logs`, `env`, `open`, and `delete` work the same way. Autostart uses `--restart unless-stopped` so containers come back when Docker Desktop starts.
+
+Native data directories are not migrated into Docker (on-disk layouts differ). Create a new docker instance, or keep the native one. Docker Desktop must be running for docker creates and starts.
+
 ## Commands
 
 | Command | Description |
@@ -102,6 +135,7 @@ stackd status
 | `stackd logs <service> [name]` | Tail instance logs |
 | `stackd doctor` | Diagnose install & dependencies |
 | `stackd autostart …` | Manage LaunchAgent start-at-login |
+| `stackd runtime [native\|docker]` | Show or set the default runtime for new instances |
 
 Run `stackd` with no arguments for the home screen (running services + command list).
 
@@ -112,6 +146,7 @@ Instances live under `~/.stackd/`:
 ```text
 ~/.stackd/
 ├── registry.json       # Instance metadata
+├── config.json         # Default runtime (native or docker)
 ├── autostart.json      # Start-at-login entries
 ├── binaries/           # Downloaded / built binaries
 ├── instances/
@@ -130,11 +165,15 @@ Services are tuned for local macOS use: smaller memory footprints, less aggressi
 
 ```bash
 composer install
-php stackd app:build stackd --build-version=v1.0.10
+php stackd app:build stackd --build-version=v1.1.0
 php builds/stackd --version
 ```
 
 Commit `builds/stackd` before tagging. Packagist serves that PHAR via `composer global require`; tagged releases (`v*`) also attach it to the GitHub release.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) and [GitHub Releases](https://github.com/vblinden/stackd/releases).
 
 ## Contributing
 

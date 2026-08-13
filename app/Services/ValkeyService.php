@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Support\BinaryDownloader;
+use App\Support\DockerEngine;
+use App\Support\DockerSpec;
 use App\Support\Instance;
 use App\Support\ProcessManager;
 use App\Support\ServiceOpener;
@@ -15,9 +17,10 @@ class ValkeyService extends AbstractService
         StackdPaths $paths,
         ProcessManager $processes,
         BinaryDownloader $binaries,
+        DockerEngine $docker,
         private readonly ServiceOpener $opener,
     ) {
-        parent::__construct($paths, $processes, $binaries);
+        parent::__construct($paths, $processes, $binaries, $docker);
     }
 
     public static function type(): string
@@ -33,6 +36,17 @@ class ValkeyService extends AbstractService
     public function defaultPort(): int
     {
         return 6379;
+    }
+
+    public function dockerSpec(Instance $instance): DockerSpec
+    {
+        return new DockerSpec(
+            image: 'valkey/valkey:8',
+            ports: [$instance->port => 6379],
+            volumes: [
+                $this->paths->dataDir($instance->service, $instance->name) => '/data',
+            ],
+        );
     }
 
     protected function provision(Instance $instance): void
