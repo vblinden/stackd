@@ -26,6 +26,7 @@ class Doctor
             ...$this->toolingChecks(),
             ...$this->homebrewChecks(),
             ...$this->storageChecks(),
+            ...$this->autostartChecks(),
             ...$this->endpointChecks(),
             ...$this->instanceChecks(),
             ...$this->optionalChecks(),
@@ -162,6 +163,73 @@ class Doctor
         );
 
         return $checks;
+    }
+
+    /**
+     * @return array<int, DoctorCheck>
+     */
+    private function autostartChecks(): array
+    {
+        if (! file_exists($this->paths->autostart())) {
+            return [
+                new DoctorCheck(
+                    group: 'Autostart',
+                    label: 'Start at login',
+                    status: DoctorCheck::PASS,
+                    message: 'Not configured',
+                ),
+            ];
+        }
+
+        $script = $this->paths->home().'/autostart.sh';
+
+        if (! is_file($script)) {
+            return [
+                new DoctorCheck(
+                    group: 'Autostart',
+                    label: 'LaunchAgent script',
+                    status: DoctorCheck::FAIL,
+                    message: 'autostart.sh is missing — run stackd autostart enable',
+                ),
+            ];
+        }
+
+        $contents = (string) file_get_contents($script);
+        $usesBareStackd = str_contains($contents, "'stackd'")
+            || preg_match('/^\s*stackd\s/m', $contents) === 1;
+
+        if ($usesBareStackd) {
+            return [
+                new DoctorCheck(
+                    group: 'Autostart',
+                    label: 'LaunchAgent script',
+                    status: DoctorCheck::FAIL,
+                    message: 'autostart.sh calls bare `stackd`, which launchd cannot find — run stackd autostart enable',
+                ),
+            ];
+        }
+
+        $plist = $this->paths->launchAgentPlist('com.stackd.autostart');
+
+        if (! is_file($plist)) {
+            return [
+                new DoctorCheck(
+                    group: 'Autostart',
+                    label: 'LaunchAgent plist',
+                    status: DoctorCheck::FAIL,
+                    message: 'com.stackd.autostart.plist is missing — run stackd autostart enable',
+                ),
+            ];
+        }
+
+        return [
+            new DoctorCheck(
+                group: 'Autostart',
+                label: 'LaunchAgent script',
+                status: DoctorCheck::PASS,
+                message: $script,
+            ),
+        ];
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Commands\Concerns\ResolvesServiceInput;
+use App\Support\InstanceManager;
 use App\Support\LaunchAgentManager;
 use LaravelZero\Framework\Commands\Command;
 
@@ -11,13 +12,13 @@ class AutostartCommand extends Command
     use ResolvesServiceInput;
 
     protected $signature = 'autostart
-                            {action : enable, disable, add, remove, or list}
+                            {action : enable, disable, add, remove, list, or run}
                             {service? : Service type for add/remove}
                             {name? : Instance name for add/remove}';
 
     protected $description = 'Manage start at login';
 
-    public function handle(LaunchAgentManager $autostart): int
+    public function handle(LaunchAgentManager $autostart, InstanceManager $manager): int
     {
         try {
             return match ($this->argument('action')) {
@@ -26,7 +27,8 @@ class AutostartCommand extends Command
                 'add' => $this->add($autostart),
                 'remove' => $this->remove($autostart),
                 'list' => $this->listEntries($autostart),
-                default => throw new \RuntimeException('Invalid action. Use: enable, disable, add, remove, list'),
+                'run' => $this->runEntries($autostart, $manager),
+                default => throw new \RuntimeException('Invalid action. Use: enable, disable, add, remove, list, run'),
             };
         } catch (\Throwable $e) {
             $this->components->error($e->getMessage());
@@ -90,5 +92,42 @@ class AutostartCommand extends Command
         $this->table(['Instance'], array_map(fn (string $entry) => [$entry], $entries));
 
         return self::SUCCESS;
+    }
+
+    private function runEntries(LaunchAgentManager $autostart, InstanceManager $manager): int
+    {
+        $entries = $autostart->list();
+
+        if ($entries === []) {
+            return self::SUCCESS;
+        }
+
+        $failed = 0;
+
+        foreach ($entries as $entry) {
+            if (! str_contains($entry, ':')) {
+                fwrite(STDERR, "Invalid autostart entry [{$entry}]\n");
+                $failed++;
+
+                continue;
+            }
+
+            [$service, $name] = explode(':', $entry, 2);
+
+            try {
+                $instance = $manager->resolveInstance($service, $name);
+
+                if ($manager->isRunning($instance)) {
+                    continue;
+                }
+
+                $manager->start($service, $name);
+            } catch (\Throwable $e) {
+                fwrite(STDERR, "Failed to start {$entry}: {$e->getMessage()}\n");
+                $failed++;
+            }
+        }
+
+        return $failed > 0 ? self::FAILURE : self::SUCCESS;
     }
 }

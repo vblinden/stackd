@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use RuntimeException;
+
 class LaunchAgentManager
 {
     public function __construct(
@@ -90,9 +92,6 @@ class LaunchAgentManager
             return;
         }
 
-        $stackd = realpath(__DIR__.'/../../stackd')
-            ?: realpath(__DIR__.'/../../application')
-            ?: 'stackd';
         $plistPath = $this->paths->launchAgentPlist('com.stackd.autostart');
         $logDir = $this->paths->home().'/logs';
 
@@ -100,18 +99,8 @@ class LaunchAgentManager
             mkdir($logDir, 0755, true);
         }
 
-        $instances = $this->list();
-        $commands = [];
-
-        foreach ($instances as $entry) {
-            [$service, $name] = explode(':', $entry, 2);
-            InstanceName::assertValid($name);
-            $commands[] = implode(' ', array_map('escapeshellarg', [$stackd, 'start', $service, $name]));
-        }
-
-        $script = "#!/bin/bash\n".implode("\n", $commands)."\n";
         $scriptPath = $this->paths->home().'/autostart.sh';
-        file_put_contents($scriptPath, $script);
+        file_put_contents($scriptPath, $this->buildAutostartScript());
         chmod($scriptPath, 0755);
 
         $plist = $this->buildPlist($scriptPath, $logDir);
@@ -127,6 +116,104 @@ class LaunchAgentManager
 
         file_put_contents($plistPath, $plist);
         $this->processes->run(['launchctl', 'load', $plistPath]);
+    }
+
+    public function buildAutostartScript(): string
+    {
+        $php = $this->resolvePhpBinary();
+        $stackd = $this->resolveStackdBinary();
+        $path = $this->launchdPath($php, $stackd);
+
+        $lines = [
+            '#!/bin/bash',
+            'export PATH='.escapeshellarg($path),
+            implode(' ', array_map('escapeshellarg', [$php, $stackd, 'autostart', 'run'])),
+            '',
+        ];
+
+        return implode("\n", $lines);
+    }
+
+    public function resolvePhpBinary(): string
+    {
+        if (defined('PHP_BINARY') && PHP_BINARY !== '' && is_file(PHP_BINARY)) {
+            return PHP_BINARY;
+        }
+
+        foreach (['/opt/homebrew/bin/php', '/usr/local/bin/php'] as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        throw new RuntimeException('Unable to resolve the PHP binary for the LaunchAgent.');
+    }
+
+    public function resolveStackdBinary(): string
+    {
+        $phar = \Phar::running(false);
+
+        if (is_string($phar) && $phar !== '' && is_file($phar)) {
+            return $phar;
+        }
+
+        foreach ($this->stackdCandidates() as $candidate) {
+            if (str_contains($candidate, 'phar://')) {
+                continue;
+            }
+
+            $resolved = realpath($candidate);
+
+            if ($resolved !== false && is_file($resolved)) {
+                return $resolved;
+            }
+        }
+
+        throw new RuntimeException(
+            'Unable to resolve the stackd binary for the LaunchAgent. Re-run from an installed stackd executable.',
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stackdCandidates(): array
+    {
+        $candidates = [];
+
+        foreach ([
+            $_SERVER['SCRIPT_FILENAME'] ?? null,
+            $_SERVER['argv'][0] ?? null,
+        ] as $candidate) {
+            if (is_string($candidate) && $candidate !== '') {
+                $candidates[] = $candidate;
+            }
+        }
+
+        $candidates[] = __DIR__.'/../../stackd';
+        $candidates[] = __DIR__.'/../../application';
+
+        return $candidates;
+    }
+
+    private function launchdPath(string $php, string $stackd): string
+    {
+        $home = rtrim((string) (getenv('HOME') ?: ''), '/');
+
+        $parts = array_filter([
+            dirname($php),
+            dirname($stackd),
+            '/opt/homebrew/bin',
+            '/usr/local/bin',
+            $home !== '' ? $home.'/.config/composer/vendor/bin' : null,
+            $home !== '' ? $home.'/.composer/vendor/bin' : null,
+            '/usr/bin',
+            '/bin',
+            '/usr/sbin',
+            '/sbin',
+        ]);
+
+        return implode(':', array_values(array_unique($parts)));
     }
 
     private function readAutostart(): array
@@ -154,8 +241,14 @@ class LaunchAgentManager
         );
     }
 
-    private function buildPlist(string $scriptPath, string $logDir): string
+    public function buildPlist(string $scriptPath, string $logDir): string
     {
+        $path = $this->escapePlist($this->launchdPath($this->resolvePhpBinary(), $this->resolveStackdBinary()));
+        $home = $this->escapePlist(rtrim((string) (getenv('HOME') ?: ''), '/'));
+        $scriptPath = $this->escapePlist($scriptPath);
+        $stdout = $this->escapePlist($logDir.'/autostart.log');
+        $stderr = $this->escapePlist($logDir.'/autostart.error.log');
+
         return <<<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -168,6 +261,13 @@ class LaunchAgentManager
         <string>/bin/bash</string>
         <string>{$scriptPath}</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>{$path}</string>
+        <key>HOME</key>
+        <string>{$home}</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>ProcessType</key>
@@ -177,11 +277,16 @@ class LaunchAgentManager
     <key>Nice</key>
     <integer>10</integer>
     <key>StandardOutPath</key>
-    <string>{$logDir}/autostart.log</string>
+    <string>{$stdout}</string>
     <key>StandardErrorPath</key>
-    <string>{$logDir}/autostart.error.log</string>
+    <string>{$stderr}</string>
 </dict>
 </plist>
 XML;
+    }
+
+    private function escapePlist(string $value): string
+    {
+        return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     }
 }

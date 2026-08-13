@@ -7,10 +7,12 @@ use App\Support\Instance;
 use App\Support\InstanceManager;
 use App\Support\InstanceRepository;
 use App\Support\LaravelProjectDetector;
+use App\Support\LaunchAgentManager;
 use App\Support\ProcessManager;
 use App\Support\ProjectDatabase;
 use App\Support\ServiceOpener;
 use App\Support\StackdPaths;
+use Symfony\Component\Process\Process;
 
 it('creates instance metadata', function () {
     $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
@@ -354,4 +356,54 @@ ENV);
         ->not->toContain('DB_CONNECTION=sqlite')
         ->not->toContain('MAIL_MAILER=log')
         ->not->toContain('database/database.sqlite');
+});
+
+it('writes launchd autostart scripts with absolute php and stackd paths', function () {
+    $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
+    $launchAgents = $home.'/LaunchAgents';
+    mkdir($home, 0755, true);
+
+    $paths = new StackdPaths($home, $launchAgents);
+    $processes = Mockery::mock(ProcessManager::class);
+    $processes->shouldReceive('run')->andReturnUsing(function () {
+        $process = new Process(['true']);
+        $process->run();
+
+        return $process;
+    });
+
+    $autostart = new LaunchAgentManager($paths, $processes);
+    $autostart->add('mysql', 'default');
+
+    $script = file_get_contents($home.'/autostart.sh');
+    $plist = file_get_contents($launchAgents.'/com.stackd.autostart.plist');
+
+    expect($script)
+        ->toContain(PHP_BINARY)
+        ->toContain('autostart')
+        ->toContain('run')
+        ->not->toContain("'stackd' 'start'")
+        ->and($plist)
+        ->toContain('<key>PATH</key>')
+        ->toContain('<key>HOME</key>')
+        ->toContain('<key>RunAtLoad</key>');
+});
+
+it('starts listed autostart instances via autostart run', function () {
+    $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
+    mkdir($home, 0755, true);
+    config(['stackd.home' => $home]);
+
+    $paths = new StackdPaths($home);
+    file_put_contents($paths->autostart(), json_encode([
+        'enabled' => true,
+        'instances' => [],
+    ]));
+
+    app()->forgetInstance(StackdPaths::class);
+    app()->instance(StackdPaths::class, $paths);
+    app()->forgetInstance(LaunchAgentManager::class);
+    app()->forgetInstance(InstanceManager::class);
+
+    $this->artisan('autostart', ['action' => 'run'])->assertSuccessful();
 });

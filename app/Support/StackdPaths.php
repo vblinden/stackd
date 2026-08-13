@@ -6,6 +6,7 @@ class StackdPaths
 {
     public function __construct(
         private readonly string $home,
+        private readonly ?string $launchAgents = null,
     ) {}
 
     public static function make(): self
@@ -56,6 +57,10 @@ class StackdPaths
 
     public function launchAgents(): string
     {
+        if ($this->launchAgents !== null) {
+            return $this->launchAgents;
+        }
+
         return rtrim(getenv('HOME') ?: '', '/').'/Library/LaunchAgents';
     }
 

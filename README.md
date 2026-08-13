@@ -130,7 +130,7 @@ Services are tuned for local macOS use: smaller memory footprints, less aggressi
 
 ```bash
 composer install
-php stackd app:build stackd --build-version=v1.0.4
+php stackd app:build stackd --build-version=v1.0.10
 php builds/stackd --version
 ```
 
