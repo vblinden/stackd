@@ -6,10 +6,11 @@ use App\Commands\Concerns\ResolvesServiceInput;
 use App\Services\Contracts\ManagesNamedDatabases;
 use App\Services\ServiceRegistry;
 use App\Support\EnvWriter;
+use App\Support\FrameworkEnv;
 use App\Support\Instance;
 use App\Support\InstanceManager;
-use App\Support\LaravelProjectDetector;
 use App\Support\ProjectDatabase;
+use App\Support\ProjectDetector;
 use LaravelZero\Framework\Commands\Command;
 use RuntimeException;
 
@@ -25,12 +26,13 @@ class EnvCommand extends Command
                             {name? : Instance name}
                             {--show : Print variables instead of writing them to .env}';
 
-    protected $description = 'Write Laravel .env lines for installed stackd services (use --show to print)';
+    protected $description = 'Write .env lines for installed stackd services (Laravel or Next.js; use --show to print)';
 
     public function handle(
         InstanceManager $manager,
         EnvWriter $envWriter,
-        LaravelProjectDetector $detector,
+        ProjectDetector $detector,
+        FrameworkEnv $frameworkEnv,
         ServiceRegistry $registry,
         ProjectDatabase $projectDatabase,
     ): int {
@@ -71,6 +73,7 @@ class EnvCommand extends Command
                 }
             }
 
+            $variables = $frameworkEnv->forFramework($detector->framework(), $variables);
             $output = $envWriter->format($variables);
 
             if ($this->option('show')) {
@@ -79,12 +82,13 @@ class EnvCommand extends Command
                 return self::SUCCESS;
             }
 
-            if (! $detector->isLaravelProject()) {
-                throw new RuntimeException('Not inside a Laravel project (artisan + .env required).');
+            if (! $detector->canWriteEnv()) {
+                throw new RuntimeException('Not inside a Laravel or Next.js project (artisan + .env, or package.json with next).');
             }
 
-            $envWriter->mergeIntoFile($detector->envPath(), $variables);
-            $this->components->info('Updated .env with stackd service configuration.');
+            $envPath = $detector->envPath();
+            $envWriter->mergeIntoFile($envPath, $variables);
+            $this->components->info('Updated '.basename($envPath).' with stackd service configuration.');
 
             return self::SUCCESS;
         } catch (\Throwable $e) {

@@ -59,9 +59,20 @@ class PostgreSqlService extends AbstractService implements ManagesNamedDatabases
                 'POSTGRES_HOST_AUTH_METHOD' => 'trust',
             ],
             volumes: [
-                $this->paths->dataDir($instance->service, $instance->name) => '/var/lib/postgresql/data',
+                $this->paths->dataDir($instance->service, $instance->name) => $this->dockerDataPath($tag),
             ],
         );
+    }
+
+    /**
+     * Postgres 18+ stores data under /var/lib/postgresql/<major>/docker.
+     * Mounting the old /var/lib/postgresql/data path makes the container exit immediately.
+     */
+    private function dockerDataPath(string $tag): string
+    {
+        return ((int) $tag) >= 18
+            ? '/var/lib/postgresql'
+            : '/var/lib/postgresql/data';
     }
 
     protected function provision(Instance $instance): void

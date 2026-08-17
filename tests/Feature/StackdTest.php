@@ -8,14 +8,15 @@ use App\Support\CredentialFormatter;
 use App\Support\DockerEngine;
 use App\Support\DockerSpec;
 use App\Support\EnvWriter;
+use App\Support\FrameworkEnv;
 use App\Support\HomebrewConflict;
 use App\Support\Instance;
 use App\Support\InstanceManager;
 use App\Support\InstanceRepository;
-use App\Support\LaravelProjectDetector;
 use App\Support\LaunchAgentManager;
 use App\Support\ProcessManager;
 use App\Support\ProjectDatabase;
+use App\Support\ProjectDetector;
 use App\Support\ServiceOpener;
 use App\Support\StackdConfig;
 use App\Support\StackdPaths;
@@ -165,7 +166,7 @@ MAIL_MAILER=log
 CACHE_STORE=database
 ENV);
 
-    $services = (new LaravelProjectDetector($repository))->detectNeededServices($env);
+    $services = (new ProjectDetector($repository))->detectNeededServices($env);
     unlink($env);
 
     expect($services)->toBe(['mysql', 'valkey', 'mailpit']);
@@ -184,7 +185,7 @@ it('picks pgsql when that connection is set and postgresql is installed', functi
     $env = sys_get_temp_dir().'/stackd-env-'.uniqid().'.env';
     file_put_contents($env, "DB_CONNECTION=pgsql\n");
 
-    $services = (new LaravelProjectDetector($repository))->detectNeededServices($env);
+    $services = (new ProjectDetector($repository))->detectNeededServices($env);
     unlink($env);
 
     expect($services)->toBe(['postgresql']);
@@ -203,10 +204,142 @@ it('prefers mysql over other databases for sqlite projects', function () {
     $env = sys_get_temp_dir().'/stackd-env-'.uniqid().'.env';
     file_put_contents($env, "DB_CONNECTION=sqlite\nDB_DATABASE=database/database.sqlite\n");
 
-    $services = (new LaravelProjectDetector($repository))->detectNeededServices($env);
+    $services = (new ProjectDetector($repository))->detectNeededServices($env);
     unlink($env);
 
     expect($services)->toBe(['mysql']);
+});
+
+it('detects next.js projects from package.json', function () {
+    $project = sys_get_temp_dir().'/stackd-next-'.uniqid();
+    mkdir($project, 0755, true);
+    file_put_contents($project.'/package.json', json_encode([
+        'dependencies' => ['next' => '15.0.0', 'react' => '19.0.0'],
+    ]));
+
+    $detector = new ProjectDetector;
+
+    expect($detector->isNextJsProject($project))->toBeTrue()
+        ->and($detector->framework($project))->toBe(ProjectDetector::FRAMEWORK_NEXTJS)
+        ->and($detector->canWriteEnv($project))->toBeTrue()
+        ->and($detector->envPath($project))->toBe($project.'/.env');
+
+    file_put_contents($project.'/.env.local', "DATABASE_URL=postgresql://localhost/app\n");
+
+    expect($detector->envPath($project))->toBe($project.'/.env.local');
+
+    file_put_contents($project.'/.env', "DATABASE_URL=postgresql://localhost/app\n");
+
+    expect($detector->envPath($project))->toBe($project.'/.env');
+});
+
+it('picks postgresql from a next.js DATABASE_URL', function () {
+    $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
+    mkdir($home, 0755, true);
+    config(['stackd.home' => $home]);
+
+    $paths = new StackdPaths($home);
+    $repository = new InstanceRepository($paths);
+    $repository->save(new Instance(service: 'mysql', name: 'default', port: 3306));
+    $repository->save(new Instance(service: 'postgresql', name: 'default', port: 5432));
+
+    $env = sys_get_temp_dir().'/stackd-env-'.uniqid().'.env';
+    file_put_contents($env, "DATABASE_URL=postgresql://laravel@127.0.0.1:5432/myapp\n");
+
+    $services = (new ProjectDetector($repository))->detectNeededServices($env);
+    unlink($env);
+
+    expect($services)->toBe(['postgresql']);
+});
+
+it('maps laravel service env keys to next.js DATABASE_URL and smtp vars', function () {
+    $mapped = (new FrameworkEnv)->forFramework(ProjectDetector::FRAMEWORK_NEXTJS, [
+        'DB_CONNECTION' => 'pgsql',
+        'DB_HOST' => '127.0.0.1',
+        'DB_PORT' => '5432',
+        'DB_DATABASE' => 'my_app',
+        'DB_USERNAME' => 'laravel',
+        'DB_PASSWORD' => '',
+        'REDIS_CLIENT' => 'phpredis',
+        'REDIS_HOST' => '127.0.0.1',
+        'REDIS_PASSWORD' => 'null',
+        'REDIS_PORT' => '6379',
+        'CACHE_STORE' => 'redis',
+        'MAIL_MAILER' => 'smtp',
+        'MAIL_HOST' => '127.0.0.1',
+        'MAIL_PORT' => '1025',
+        'MAIL_FROM_ADDRESS' => 'hello@example.com',
+        'STACKD_MAILPIT_WEB' => 'http://127.0.0.1:8025',
+    ]);
+
+    expect($mapped)->toBe([
+        'DATABASE_URL' => 'postgresql://laravel@127.0.0.1:5432/my_app?schema=public',
+        'DB_HOST' => '127.0.0.1',
+        'DB_PORT' => '5432',
+        'DB_DATABASE' => 'my_app',
+        'DB_USERNAME' => 'laravel',
+        'DB_PASSWORD' => '',
+        'REDIS_URL' => 'redis://127.0.0.1:6379',
+        'REDIS_HOST' => '127.0.0.1',
+        'REDIS_PORT' => '6379',
+        'SMTP_HOST' => '127.0.0.1',
+        'SMTP_PORT' => '1025',
+        'EMAIL_SERVER' => 'smtp://127.0.0.1:1025',
+        'EMAIL_FROM' => 'hello@example.com',
+        'STACKD_MAILPIT_WEB' => 'http://127.0.0.1:8025',
+    ])->and((new FrameworkEnv)->forFramework(ProjectDetector::FRAMEWORK_NEXTJS, [
+        'DB_CONNECTION' => 'mysql',
+        'DB_HOST' => '127.0.0.1',
+        'DB_PORT' => '3306',
+        'DB_DATABASE' => 'my_app',
+        'DB_USERNAME' => 'root',
+        'DB_PASSWORD' => 's3cret',
+    ])['DATABASE_URL'])->toBe('mysql://root:s3cret@127.0.0.1:3306/my_app');
+});
+
+it('writes next.js env files from installed services', function () {
+    $home = sys_get_temp_dir().'/stackd-test-'.uniqid();
+    mkdir($home, 0755, true);
+    config(['stackd.home' => $home]);
+
+    $paths = new StackdPaths($home);
+    $repository = new InstanceRepository($paths);
+    $repository->save(new Instance(
+        service: 'mailpit',
+        name: 'default',
+        port: 1025,
+        options: ['web_port' => 8025],
+    ));
+
+    app()->forgetInstance(StackdPaths::class);
+    app()->instance(StackdPaths::class, $paths);
+    app()->forgetInstance(InstanceRepository::class);
+    app()->instance(InstanceRepository::class, $repository);
+    app()->forgetInstance(InstanceManager::class);
+
+    $project = sys_get_temp_dir().'/stackd-next-'.uniqid();
+    mkdir($project, 0755, true);
+    file_put_contents($project.'/package.json', json_encode([
+        'dependencies' => ['next' => '15.0.0'],
+    ]));
+
+    $cwd = getcwd();
+    chdir($project);
+
+    try {
+        $this->artisan('env')->assertSuccessful();
+    } finally {
+        chdir($cwd);
+    }
+
+    $contents = file_get_contents($project.'/.env');
+
+    expect($contents)
+        ->toContain('SMTP_HOST=127.0.0.1')
+        ->toContain('SMTP_PORT=1025')
+        ->toContain('EMAIL_SERVER=smtp://127.0.0.1:1025')
+        ->toContain('EMAIL_FROM=hello@example.com')
+        ->not->toContain('MAIL_MAILER=smtp');
 });
 
 it('detects conflicting Homebrew formula names', function () {
@@ -488,6 +621,13 @@ it('describes official docker images for mysql postgres and mailpit', function (
         port: 5432,
         runtime: 'docker',
     ));
+    $postgresLegacy = app(PostgreSqlService::class)->dockerSpec(new Instance(
+        service: 'postgresql',
+        name: 'legacy',
+        port: 5433,
+        version: '16',
+        runtime: 'docker',
+    ));
     $mailpit = app(MailpitService::class)->dockerSpec(new Instance(
         service: 'mailpit',
         name: 'default',
@@ -500,6 +640,8 @@ it('describes official docker images for mysql postgres and mailpit', function (
         ->and($mysql->ports)->toBe([3306 => 3306])
         ->and($postgres->image)->toBe('postgres:18')
         ->and($postgres->env['POSTGRES_HOST_AUTH_METHOD'])->toBe('trust')
+        ->and(array_values($postgres->volumes))->toBe(['/var/lib/postgresql'])
+        ->and(array_values($postgresLegacy->volumes))->toBe(['/var/lib/postgresql/data'])
         ->and($mailpit->image)->toBe('axllent/mailpit')
         ->and($mailpit->ports)->toBe([1025 => 1025, 8025 => 8025])
         ->and($mailpit->command)->toContain('--database');

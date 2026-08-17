@@ -2,7 +2,7 @@
 
 **Local database and service manager for macOS.**
 
-Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO — then connect any Laravel project to them. Built to sit alongside [Laravel Valet](https://laravel.com/docs/valet). Native binaries by default; official Docker images if you want them.
+Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO — then connect any Laravel or Next.js project to them. Built to sit alongside [Laravel Valet](https://laravel.com/docs/valet). Native binaries by default; official Docker images if you want them.
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%E2%80%938.5-777BB4?style=flat-square)](https://www.php.net/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
@@ -13,7 +13,7 @@ Create global named instances of MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Me
 
 - **Services** — MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO
 - **Global instances** — one MySQL for all your apps, not a container per project
-- **Laravel-friendly** — `stackd env` overwrites your `.env` for every installed service (and uses your project folder as the DB name)
+- **Laravel and Next.js** — `stackd env` overwrites your `.env` for every installed service (and uses your project folder as the DB name)
 - **No Docker required** — downloads (or builds) native binaries on demand
 - **Optional Docker** — `stackd runtime docker` runs new instances from official images instead
 - **macOS native** — binds to `127.0.0.1`, optional LaunchAgent start-at-login
@@ -73,7 +73,7 @@ stackd create mysql
 stackd create valkey
 stackd create mailpit
 
-# From a Laravel project root — writes .env for all installed stackd services
+# From a Laravel or Next.js project root — writes .env for all installed stackd services
 stackd env
 stackd env --show   # print only
 
@@ -87,6 +87,8 @@ stackd status
 ```
 
 `create` starts the instance immediately and can optionally add it to start-at-login.
+
+Next.js apps get Prisma/Drizzle `DATABASE_URL`, `REDIS_URL`, and SMTP/`EMAIL_*` keys (written to `.env`, or `.env.local` if that is the only env file). Laravel apps still get `DB_*` / `MAIL_*`.
 
 ## Runtime (native or Docker)
 
@@ -129,7 +131,7 @@ Native data directories are not migrated into Docker (on-disk layouts differ). C
 | `stackd status` | Show all instances |
 | `stackd list` | List instances as a table |
 | `stackd delete` / `remove` / `uninstall` | Delete an instance and its data |
-| `stackd env [service] [name]` | Write `.env` keys for installed stackd services |
+| `stackd env [service] [name]` | Write `.env` keys for Laravel or Next.js projects |
 | `stackd env --show` | Print variables instead of writing |
 | `stackd open <service> [name]` | Open TablePlus or the web UI |
 | `stackd logs <service> [name]` | Tail instance logs |
@@ -165,7 +167,7 @@ Services are tuned for local macOS use: smaller memory footprints, less aggressi
 
 ```bash
 composer install
-php stackd app:build stackd --build-version=v1.1.1
+php stackd app:build stackd --build-version=v1.2.0
 php builds/stackd --version
 ```
 

@@ -1,6 +1,6 @@
 {
     "name": "vblinden/stackd",
-    "description": "Local database and service manager for macOS — MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO for Laravel development",
+    "description": "Local database and service manager for macOS — MySQL, MariaDB, PostgreSQL, Valkey, Mailpit, Meilisearch, and MinIO for Laravel and Next.js development",
     "keywords": [
         "cli",
         "development",

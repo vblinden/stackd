@@ -249,7 +249,10 @@ class DockerEngine
 
         while (microtime(true) < $deadline) {
             if (! $this->isRunning($instance)) {
-                throw new RuntimeException("Docker container {$this->containerName($instance)} exited before it became ready.");
+                throw new RuntimeException(
+                    "Docker container {$this->containerName($instance)} exited before it became ready."
+                    .$this->logSuffix($instance)
+                );
             }
 
             $connection = @fsockopen($host, $instance->port, $errno, $errstr, 0.2);
@@ -263,6 +266,36 @@ class DockerEngine
             usleep(200_000);
         }
 
-        throw new RuntimeException("Timed out waiting for {$instance->id()} to accept connections on {$host}:{$instance->port}.");
+        throw new RuntimeException(
+            "Timed out waiting for {$instance->id()} to accept connections on {$host}:{$instance->port}."
+            .$this->logSuffix($instance)
+        );
+    }
+
+    private function logSuffix(Instance $instance): string
+    {
+        $logs = $this->recentLogs($instance);
+
+        return $logs === '' ? '' : "\n".$logs;
+    }
+
+    private function recentLogs(Instance $instance, int $lines = 40): string
+    {
+        try {
+            $process = $this->processes->run([
+                $this->binary(),
+                'logs',
+                '--tail',
+                (string) $lines,
+                $this->containerName($instance),
+            ]);
+        } catch (RuntimeException) {
+            return '';
+        }
+
+        return trim(implode("\n", array_filter([
+            trim($process->getOutput()),
+            trim($process->getErrorOutput()),
+        ])));
     }
 }
